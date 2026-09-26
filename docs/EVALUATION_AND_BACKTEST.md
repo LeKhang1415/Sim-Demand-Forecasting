@@ -1,73 +1,68 @@
-# Evaluation và backtest
+# Đánh giá và backtest
 
-## Mục tiêu đề bài và phạm vi số liệu
+**M2:** MAPE ≤20% ở Top 10 tuyến. **M3:** cảnh báo cạn kho trước ≥7 ngày. Target chính là **quantity success theo order_date UTC**; forecast cho tất cả 10 SKU × các tuyến hợp lệ.
 
-**M2: MAPE ≤20% ở Top 10 tuyến chủ lực; M3: cảnh báo cạn kho trước ≥7 ngày.** Đây là yêu cầu gốc trong [ảnh đề bài](PROJECT_REQUIREMENTS.png), không phải mục tiêu tùy chọn. Cần báo đạt/chưa đạt theo cách đo thống nhất; các giới hạn kỹ thuật không tự hủy KPI.
+## 1. Chọn Top 10 và đo đúng cấp
 
-Đánh giá chính là **activation × tuyến quốc gia–nhà mạng**. Chọn Top 10 bằng train trên target/filter đã định nghĩa, khóa trước test; không dùng danh sách Top 10 Region × SKU của review. Cách xếp hạng, macro-average hay từng tuyến và xử lý zero còn cần xác nhận ở [DECISIONS](DECISIONS.md). MAPE_positive/WAPE là cách báo minh bạch, không tự trở thành phương án thay KPI được duyệt.
+1. Trong **train**, cộng quantity success theo (country, carrier) qua mọi SKU/product_type.
+2. Xếp giảm dần; tie-break đề xuất theo country rồi carrier. Lưu danh sách/cutoff, khóa trước validation/test và không đổi theo kết quả tương lai.
+3. Cộng forecast và actual SKU/type lên tổng tuyến mỗi ngày trước khi tính KPI.
+4. Báo Top 10 cho ngưỡng ≤20%; đồng thời chấm tất cả tuyến × SKU, region, nhóm thưa và cấp stock item nếu có phân bổ.
 
-## Metric tối thiểu
+**[MỀM] / [XÁC NHẬN]** Đề xuất metric ngày, báo từng tuyến và macro-average Top 10. Quy tắc nghiệm thu “mọi tuyến đạt” hay “macro đạt” còn cần mentor xác nhận; không tự đổi sang metric tuần để đạt KPI. Nếu một tuyến không có actual dương, ghi N/A và số tuyến tính được, không im lặng bỏ tuyến đó.
 
-**[MỀM]** Bộ metric từ B3 được tính cùng target/filter/split/horizon, báo từng tuyến và nhóm độ thưa; tổng hợp region nếu cần. Báo riêng Top 10 cho KPI và các tuyến còn lại để tránh bỏ sót. Target và số liệu nền ở [DATA_CONTRACT](DATA_CONTRACT.md).
+## 2. Metric
 
-| Metric | Quy ước và giới hạn |
+Đặt sai số e = forecast − actual.
+
+| Metric | Cách tính / xử lý |
 |---|---|
-| MAE | Trung bình sai số tuyệt đối; tính cả actual=0 |
-| WAPE | Σ\|forecast−actual\| / Σactual; mẫu số bằng 0 thì N/A, kèm MAE/forecast excess riêng |
-| Bias | Σ(forecast−actual) / Σactual; mẫu số bằng 0 thì N/A; theo dõi dự báo dư/thiếu |
-| MAPE_positive | **[CỨNG]** Chỉ tính ở actual>0, luôn báo số điểm được tính/tổng điểm và tỷ lệ coverage; không chèn epsilon hoặc gọi là MAPE toàn bộ |
-| RMSSE hoặc MASE | **[MỀM]** Mẫu số chuẩn hóa chỉ tính từ train để so chuỗi khác quy mô; nếu mẫu số train bằng 0 thì N/A |
-| Sai số tổng horizon | Cộng actual/forecast của từng chuỗi, từng origin trước khi tính sai số; phân biệt với metric từng ngày |
+| MAE | mean(ABS(e)), gồm actual=0 |
+| MAPE_positive | mean(ABS(e)/actual) ×100% **chỉ tại actual>0** |
+| Coverage MAPE | Số điểm actual>0 / tổng điểm; luôn báo cả số đếm và tỷ lệ |
+| WAPE | SUM(ABS(e))/SUM(actual) ×100%; mẫu số 0 → N/A, báo MAE/forecast excess |
+| Bias | SUM(e)/SUM(actual) ×100%; mẫu số 0 → N/A |
+| MASE/RMSSE, tùy chọn | Mẫu số chuẩn hóa chỉ dùng train; mẫu số 0 → N/A |
+| Sai số tổng horizon | Cộng actual và forecast theo từng chuỗi/origin rồi tính; báo riêng với metric ngày |
 
-**[CỨNG]** MAPE không xác định khi actual=0; vẫn giữ các điểm đó trong MAE/WAPE. Định nghĩa KPI/macro-average Top 10 còn là đề xuất cần mentor xác nhận tại câu 8 của [DECISIONS](DECISIONS.md). Không hứa trước đạt KPI.
+**[CỨNG]** Không chèn epsilon vào MAPE, không gọi MAPE đã bỏ zero là MAPE toàn bộ. Các zero vẫn nằm trong MAE/WAPE. Không chọn model chỉ bằng MAE của nhóm thưa; xét bias, sai số cộng dồn và hệ quả stockout.
 
-Không chọn model chỉ vì MAE thấp ở nhóm thưa; kiểm tra bias, tổng horizon và ảnh hưởng stockout. Nếu có quantile forecast sau này, thêm pinball loss và coverage theo horizon. Đây là phương án mở rộng, chưa phải kết quả đã có.
+## 3. Split và thông tin tại origin
 
-## Rolling-origin — split D2 tham chiếu và điều chỉnh activation
+**[MỀM] — cần mentor xác nhận thiết kế đánh giá:** train 01/01/2024–30/06/2025; validation 01/07–30/09/2025; final test 01/10–31/12/2025. Origin cuối ngày UTC, cách 7 ngày; dự báo h=1…7, chỉ chấm horizon đầy đủ trong partition. Top 10 khóa bằng train ban đầu đến 30/06/2025.
 
-Lịch sau là đề xuất cũ trên order-date. **Với activation, chỉ tái sử dụng sau khi xác định cửa sổ đủ quan sát**: không coi phần đầu/cuối thiếu mẫu orders hoặc ngày sau cuối order là các zero đầy đủ. Lưu split/cutoff mới theo target version; không khẳng định đã kiểm chứng split này cho activation.
+- **[CỨNG]** Lag/rolling chỉ dùng lịch sử trong chuỗi tới origin; shift trước rolling khi dự báo ngày t từ t−1.
+- Direct training row chỉ dùng khi toàn bộ nhãn đã nằm trước cutoff; recursive thay actual chưa biết bằng forecast. Không kiểm thử nhiều bước bằng actual tương lai.
+- Chọn model/feature/cửa sổ phân bổ/ngưỡng EOL bằng train/validation; khóa trước final test, không tuning trên test. Thống kê toàn kỳ chỉ là EDA.
+- Lịch refit phải cố định trước test; đề xuất expanding window/refit cuối tháng. Actual test đã trôi qua được dùng tại origin mới.
+- Lưu target/filter/grain/UTC/cutoff. CSV chỉ có trạng thái cuối: backtest giả định nhãn đủ chín, không tái hiện đầy đủ lịch sử trạng thái.
+- Mở rộng và backtest horizon M3 theo policy; không lấy chất lượng 7 ngày làm bằng chứng cho horizon dài hơn.
 
-**Split đề xuất [MỀM]:** train ban đầu 01/01/2024–30/06/2025; validation 01/07–30/09/2025 tại các origin cách 7 ngày; final test 01/10–31/12/2025. Mỗi origin chỉ chấm horizon đủ 7 ngày trong partition. Nếu mô hình có nhãn direct tương lai, chỉ đưa training row vào khi toàn bộ nhãn của row đã nằm trước cutoff. Có thể refit cuối tháng theo expanding window, nhưng lịch refit phải cố định trước test và giống dự kiến vận hành. Lag có thể lấy actual từ những ngày test đã trôi qua tại origin mới; không lấy actual nằm sau origin.
+## 4. Benchmark cũ và nghiệm thu
 
-Đây là **đề xuất — cần mentor xác nhận**, không phải split đã chạy xong. **[CỨNG]** Chọn Top 10, cửa sổ phân bổ, feature và ngưỡng EOL chỉ từ train/validation tương ứng. Khóa model/feature/hyperparameter trước final test; không tuning tiếp trên chính test. Thống kê toàn kỳ trong review là EDA.
+[Review A4](../Review_SIGMA_M2_M3.md) đã chấm **order-date × Region × SKU v0.1**: naive, seasonal naive, MA7, MA28 trên 13 origin, tổng 910 điểm; coverage MAPE 905/910 = 99,45%. Bảng metric chi tiết giữ ở nguồn để tránh lặp.
 
-**[CỨNG]** Kiểm thử thực đủ horizon: không dự báo bước sau bằng lag actual tương lai. Direct dùng thống kê tại origin, horizon_day và lịch ngày dự báo; recursive phải thay actual chưa biết bằng forecast trong training/evaluation tương ứng. Shift trước rolling với thiết kế dự báo ngày t từ dữ liệu tới t−1; không đưa target/giá bình quân/revenue cùng ngày vào input.
+v0.3 dùng cùng quantity success/order_date nhưng **khác grain và Top 10**. Chạy lại benchmark tuyến; không gắn metric cũ cho tuyến hoặc kết luận trước khả năng đạt 20%.
 
-Backtest hiện giả định nhãn đã đủ chín, do orders chỉ có trạng thái cuối. Lưu cutoff/timezone/target version và nêu hạn chế point-in-time theo contract. Phân bổ và policy phải được đánh giá tiếp ở cấp stock item; không chỉ chấm cấp cha.
+**Hoàn thành kỹ thuật:** pipeline tái chạy; mọi tuyến × SKU có forecast/fallback hoặc lý do thiếu; baseline/model cùng split/horizon; tổng hợp SKU/type nhất quán; báo đầy đủ metric/coverage.
 
-## Benchmark chẩn đoán A4 — không phải kết quả huấn luyện M2
+**Nghiệm thu KPI:** báo đạt/chưa đạt theo cách đo được thống nhất. Pipeline chạy được hoặc model không thắng baseline không tự đồng nghĩa đạt KPI.
 
-**Phạm vi v0.1:** quantity success theo order_date UTC, Top 10 Region × SKU. Giữ nguyên kết quả review để truy vết; chưa có benchmark activation/tuyến. Các con số này không chứng minh KPI theo tuyến đã đạt hoặc không thể đạt.
+## 5. Mô phỏng tồn kho và cảnh báo
 
-Đã chạy thêm benchmark chẩn đoán, không phải huấn luyện đầy đủ M2: chọn Top 10 bằng dữ liệu **đến 30/06/2025**; 13 forecast origin cách nhau 7 ngày từ 30/06 đến 22/09/2025; mỗi origin dự báo một lần đủ 7 ngày, chỉ dùng dữ liệu đã có đến origin. Actual được chấm từ 01/07 đến 29/09/2025, tổng 910 điểm. Chưa dùng quý IV để chọn mô hình.
+Stock đầu kỳ, L/R/MOQ/SS/ROP, ETA và ngưỡng cảnh báo cấu hình **riêng từng carrier**, có source/status/version/scenario_id. Replay quantity bán theo order_date; giả định một đơn vị bán tiêu thụ một đơn vị kho phải được khai báo. Đây là mô phỏng trên bán hàng quan sát được, không phải hiệu quả với nhu cầu tiềm ẩn thật.
 
-| Baseline | MAE, đơn vị/ngày/chuỗi | WAPE ngày | MAPE trên actual > 0 | WAPE tổng 7 ngày |
-|---|---:|---:|---:|---:|
-| Naive: lặp giá trị ngày cuối | 4,824 | 45,84% | 62,07% | 35,30% |
-| Seasonal naive: lặp tuần cuối | 4,998 | 47,49% | 66,58% | 20,95% |
-| MA7: giữ trung bình 7 ngày cho cả horizon | 3,980 | 37,82% | 57,53% | 20,95% |
-| MA28 | 3,970 | 37,73% | 60,19% | 20,10% |
+**[CỨNG]** Policy chỉ thấy thông tin có tại origin, nhận hàng theo ETA, bảo toàn tồn kho, tránh trừ reservation/backorder hai lần và dùng nhất quán lost-sales hoặc backorder. So các policy trên cùng scenario/demand/randomness; lưu seed nếu có.
 
-MAPE ở đây chỉ bao phủ **905/910 điểm, 99,45%**; năm điểm zero vẫn được tính trong MAE/WAPE. “WAPE tổng 7 ngày” tính sai số sau khi cộng bảy actual và bảy forecast của từng chuỗi, từng origin; không tương đương metric theo ngày. Các con số này không chứng minh ML không thể đạt 20%; chúng chứng minh **chưa có căn cứ cam kết KPI đó**, kể cả cho nhóm chuỗi dày.
+Báo fill rate = đơn vị đáp ứng / đơn vị yêu cầu, lost units/backorder, stock trung bình/cuối kỳ và lượng nhập. Mẫu số lượng yêu cầu bằng 0 thì fill rate=N/A.
 
-## Tiêu chí hoàn thành M2
+Đánh giá cảnh báo bằng hai nhánh:
 
-**Hoàn thành kỹ thuật M2:** pipeline activation/tuyến có thể tái chạy, có target/filter/cửa sổ quan sát/version rõ; output hoặc lý do thiếu cho mỗi tuyến trong phạm vi; baseline naive/moving average và model được chấm cùng horizon/split, có kết quả lựa chọn/fallback theo tuyến. Báo MAPE với coverage cùng metric bổ sung; khóa Top 10 và model trước test.
+1. **Đối chứng:** không đặt thêm ngoài receipts đã có tại origin, để đo rủi ro được cảnh báo.
+2. **Có hành động:** policy nhập hàng, để đo kết quả thực hiện. Nhập kịp rồi không cạn không tự là false positive.
 
-**Nghiệm thu KPI tách riêng:** báo kết quả so với ngưỡng đề bài theo cách tính được thống nhất. Nếu chưa đạt hoặc định nghĩa MAPE còn chưa thống nhất, ghi rõ và trao đổi mentor; không ghi “đạt M2” chỉ vì pipeline chạy được. Không thắng baseline vẫn có giá trị báo cáo nhưng không tự chứng minh đạt KPI.
+Đếm theo **sự kiện**, không đếm lặp stockout mỗi ngày. Lead time cảnh báo = ngày thiếu ở nhánh đối chứng − ngày cảnh báo đầu tiên tương ứng; báo ca ≥7 ngày, muộn, bỏ sót, không có sự kiện đối ứng và chưa đủ quan sát. Quy tắc ghép sự kiện cần khai báo trước đánh giá.
 
-Lịch đóng gói code/config, dữ liệu xử lý, metadata/model artifact và bàn giao M3 ở [ROADMAP](ROADMAP.md). Mục tiêu là kết quả kiểm tra được, không sửa metric để đạt KPI.
+Sai số ngày cạn chỉ tính khi cả dự báo và đối chứng có sự kiện trong cửa sổ; không gán ngày cạn giả. Phân biệt hết tồn cuối ngày và thiếu nhu cầu trong ngày. Nếu chưa cạn, chỉ kết luận trong horizon đủ dữ liệu; forecast 7 ngày không bảo đảm mọi cảnh báo sớm 7 ngày.
 
-## Đánh giá mô phỏng M3
-
-Scenario minh họa và trạng thái chưa xác nhận ở [ROADMAP](ROADMAP.md); công thức policy/horizon ở [ARCHITECTURE](ARCHITECTURE.md).
-
-**Mô phỏng và metric:** stock đầu kỳ/L/R/MOQ/ETA do nhóm cấu hình; trạng thái sau đó sinh từ policy và sự kiện mô phỏng. Policy chỉ thấy thông tin có tại origin, hàng đặt về theo ETA, bảo toàn kho và nhất quán lost-sales/backorder. Khai báo quan hệ target activation với tiêu thụ kho; có thể giữ nhánh order-date riêng để sensitivity, không trộn hai target. Fill rate tính theo đơn vị đáp ứng/đơn vị yêu cầu. So policy trong cùng scenario, demand và randomness; không diễn giải thành hiệu quả nhu cầu tiềm ẩn của doanh nghiệp.
-
-Precision/recall cảnh báo cần hai phép đo tách biệt: (1) nhánh đối chứng không đặt thêm đơn mới ngoài các receipt đã tồn tại tại origin, để đánh giá rủi ro đã cảnh báo; (2) nhánh có hành động để đo tồn kho thực hiện dưới policy. Cảnh báo làm người quản lý nhập kịp rồi không cạn không tự động là false positive. Đếm theo sự kiện, tránh đếm lặp một stockout mỗi ngày. Sai số ngày cạn chỉ tính khi cả hai bên có sự kiện trong cửa sổ; báo thêm số trường hợp không cạn/chưa quan sát đủ, không gán ngày cạn giả cho chúng.
-
-**[MỀM] Cách đo mục tiêu cảnh báo ≥7 ngày:** với sự kiện thiếu hàng ở nhánh đối chứng, tính ngày thiếu − ngày cảnh báo đầu tiên tương ứng. Báo số sự kiện được cảnh báo đủ sớm, cảnh báo muộn và bị bỏ sót trên toàn bộ sự kiện đủ cửa sổ quan sát; báo riêng số chưa đủ quan sát và cảnh báo không có sự kiện đối ứng. Không loại ca khó để tăng tỷ lệ, không đặt ngày cạn giả, không nhầm ngày cạn dự báo với sự kiện đối chứng. Quy tắc ghép sự kiện/tổng hợp là thiết kế nghiệm thu cần thống nhất.
-
-Mở và backtest horizon phù hợp trước khi chấm mục tiêu; forecast chỉ 7 ngày không bảo đảm luôn có cảnh báo sớm 7 ngày. Nếu không đạt, báo nguyên nhân và kết quả từng scenario. Các ca kiểm thử rule ở [AGENTS](../AGENTS.md).
-
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [A4, B1–B3, B5–B6, D1–D3]; yêu cầu KPI theo [đề bài](PROJECT_OVERVIEW.md), 25/09/2026. Cách đo trên activation/scenario là đề xuất cập nhật, chưa có kết quả mới.
+Policy ở [ARCHITECTURE](ARCHITECTURE.md); ca kiểm thử bắt buộc ở [AGENTS](../AGENTS.md).

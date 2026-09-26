@@ -1,128 +1,105 @@
-# Kiến trúc dự kiến
+# Kiến trúc và chính sách tồn kho
 
-Mô hình logic giữ ba khối và tên các bảng gốc, cập nhật theo review và [phạm vi orders-only](PROJECT_OVERVIEW.md). Nhóm tự dựng đầu vào mô phỏng M3; không chờ inventory/config/receipt thật. Cấu trúc triển khai mới là **[MỀM]**; giá trị/default cụ thể vẫn **cần mentor xác nhận** cho nghiệm thu ở [DECISIONS](DECISIONS.md).
+Target hiện hành: **quantity success theo order_date UTC**. Forecast đủ **10 SKU × tuyến hợp lệ**; Top 10 chỉ để chấm KPI. Schema dưới đây là thiết kế **[MỀM]**, chưa phải hệ thống đã triển khai.
 
-## Ba khối dữ liệu
+## 1. Input → xử lý → output
 
 ```mermaid
-flowchart TD
-  subgraph K1["Khối 1 — Giao dịch thật và bảng tra cứu"]
-    O[ORDERS raw bất biến]
-    D[REGION / COUNTRY / CARRIER / SKU_CATALOG / CUSTOMER]
-    O --> D
-  end
-  subgraph K2["Khối 2 — Activation dẫn xuất và dự báo"]
-    DD[DAILY_DEMAND]
-    C[CALENDAR — tự dựng, chưa xác nhận]
-    F[FORECAST_RESULT — tuyến quốc gia / nhà mạng]
-    DD --> F
-    C --> F
-  end
-  subgraph K3["Khối 3 — Scenario tồn kho và quyết định"]
-    A[Phân bổ carrier × SKU × product_type]
-    I[REGION_INVENTORY — snapshot mô phỏng]
-    S[SUPPLIER_CONFIG — giả định có version]
-    R[Receipts và ETA — cấu hình / mô phỏng]
-    Q[REORDER_RECOMMENDATION / cảnh báo]
-    A --> Q
-    I --> Q
-    S --> Q
-    R --> Q
-  end
-  O --> DD
-  F --> A
+flowchart LR
+  O["Orders raw"] --> D["Quantity sold / ngày / tuyến / SKU"]
+  C["Calendar có nguồn/version"] --> F["Forecast tất cả tuyến × SKU"]
+  D --> F
+  F --> T["Cộng SKU: KPI tuyến"]
+  F --> A["Tách product_type: stock item"]
+  A --> P["Policy riêng từng carrier"]
+  I["Snapshot và receipts/ETA scenario"] --> P
+  S["SUPPLIER_CONFIG theo carrier/type/SKU"] --> P
+  P --> Q["Đề xuất nhập, cảnh báo, dashboard"]
 ```
 
-Calendar do nhóm tự dựng; inventory/config không được cấp và sẽ là dữ liệu scenario. **[XÁC NHẬN]** Region điểm đến chưa chứng minh có kho vật lý; carrier chưa chắc là NCC ký hợp đồng. Kho logic/region và carrier=NCC là giả định demo, không phải phụ thuộc phải có xác nhận vận hành thật mới chạy được. Không dùng chung một stock cho nhiều carrier/type.
+Country là nước sử dụng SIM; carrier là nhà mạng nước đích và chiều đối tác quản lý tồn. Region là chiều tổng hợp, không mặc nhiên là kho vật lý. Raw orders là nguồn được cấp; stock/config/receipts/EOL do nhóm dựng có source, lý do, status, version, scenario_id và seed nếu có.
 
-**[MỀM] Luồng dựng scenario:** khai báo stock đầu kỳ/config và receipts ban đầu nếu có; phát sinh receipt mới từ lượng đặt và lead time giả định; cập nhật snapshot theo nhận hàng và tiêu thụ mô phỏng. Ghi sự kiện trừ kho (activation/order/reservation) được chọn; không tự coi activation là sự kiện trừ kho thật. Lịch sử chỉ cung cấp tín hiệu replay, không xác định duy nhất stock/L/MOQ thật. Kho/config/receipts có nguồn giả định, quy tắc sinh, version, scenario_id và seed nếu sinh ngẫu nhiên; thiếu config vẫn trả trạng thái thiếu dữ liệu.
+## 2. Bảng và khóa
 
-## Danh sách 12 bảng và sửa đổi khóa/cấu trúc
+| Bảng logic | Khóa / nội dung chính |
+|---|---|
+| ORDERS | order_id; raw bất biến, order_date và activation_date suy ra UTC riêng; kiểm tra bộ ba carrier/country/region |
+| REGION, COUNTRY, CARRIER | Mapping carrier → country → region; Country 1–n Carrier, Region 1–n Country |
+| SKU_CATALOG | sku; plan_type/data_gb/validity_days; SKU chưa đủ xác định hàng thay thế |
+| CUSTOMER | Tùy chọn tra cứu; không dùng tổng hợp toàn kỳ hoặc customer_type làm feature |
+| CALENDAR | date; phủ ngày forecast, nguồn/version |
+| DAILY_DEMAND | target_version + order_date + series_key; series_key = country/carrier/SKU; gộp type ở output cơ sở |
+| FORECAST_RESULT | **run_id + series_key + forecast_date**; metadata gồm target/grain, model_version, origin, cutoff, UTC và filter success |
+| REGION_INVENTORY | snapshot + stock_item_id; stock item giải ra country/carrier/SKU/product_type, region được đối soát; lưu usable/reserved/unsellable và provenance |
+| SUPPLIER_CONFIG | config_id/version, carrier, product_type, scope SKU, effective_from/to, scenario_id; quy tắc default/override rõ |
+| REORDER_RECOMMENDATION | recommendation_id + stock item; liên kết forecast run, snapshot, config/allocation/rule version, scenario và trạng thái |
+| OPEN_RECEIPTS, bổ sung khi cần | receipt/order ID, stock item, quantity, ETA, trạng thái; hỗ trợ idempotency |
 
-| Bảng | Khóa/phạm vi thiết kế | Điều chỉnh từ B4 |
-|---|---|---|
-| ORDERS | order_id | Giữ raw bất biến; order_date và activation_date suy ra UTC riêng. Nếu giữ đồng thời carrier/country/region, kiểm tra bộ ba khi nạp; FK riêng lẻ không đủ. Khoảng quantity quan sát trong [contract](DATA_CONTRACT.md) không phải giới hạn nghiệp vụ vĩnh viễn |
-| REGION | region_code | Chiều phân tích; kho/pool logic là giả định mô phỏng, không tuyên bố có kho vật lý tương ứng |
-| COUNTRY | country_name | Country 1–n Carrier, Region 1–n Country. Có thể cho destination dạng nhóm nếu nghiệp vụ cần; không coi các nước cùng region là tương đương |
-| CARRIER | carrier_id | Kiểm tra mapping tên carrier gốc. region_code dư thừa so với country: giữ có đối soát hoặc bỏ; mapping carrier=NCC chưa xác nhận |
-| SKU_CATALOG | sku | Thuộc tính cố định; SKU chung chưa đủ nhận diện offering thay thế. data_gb unlimited cần data dictionary, không tự coi là hard cap |
-| CUSTOMER | customer_id | Tùy nhu cầu tra cứu; không cần trên đường chạy forecast M2, không dùng tổng hợp toàn kỳ làm feature; giữ phạm vi loại trừ của [contract](DATA_CONTRACT.md) |
-| CALENDAR | date | Phủ cả train và ngày forecast; lưu nguồn/phiên bản được duyệt, tạo ngày tương lai còn thiếu trước inference |
-| DAILY_DEMAND | **[MỀM]** target_version + date + series_key | series_key biểu diễn route country/carrier và SKU nếu tách. Metadata khai báo grain, event_date_basis, filter, cửa sổ quan sát/cutoff. Nhánh order-date × Region × SKU v0.1 tách bằng version; không tái dùng đối soát cũ cho activation |
-| REGION_INVENTORY | Snapshot + region + carrier + SKU + product_type, hoặc stock_item_id biểu diễn đủ các chiều | **[CỨNG]** Bổ sung carrier/type vào khóa cũ. Lưu snapshot timestamp, source, scenario; định nghĩa usable stock, reserved và hàng không bán được |
-| SUPPLIER_CONFIG | Thiết kế versioned theo carrier/type, scope SKU và effective_from | Khóa carrier+SKU cũ không đủ cho nhiều phiên bản/product_type. **[MỀM]** Có thể dùng config_id, scope, SKU nullable với uniqueness/hiệu lực rõ, hoặc tách default/override. `sku='*'` không phải SKU thật, không ép qua FK SKU_CATALOG; xác định thứ tự override |
-| FORECAST_RESULT | **[MỀM]** run_id + series_key + forecast_date | Mỗi run gắn một target/grain version; series_key giải ra country/carrier và chiều con nếu có. Metadata lưu model_version/data_cutoff/filter. **[CỨNG]** run_date không phân biệt rerun; khóa phải thống nhất, không ghi forecast activation vào chuỗi order-date |
-| REORDER_RECOMMENDATION | Định danh khuyến nghị và stock item đủ region/carrier/SKU/type | **[CỨNG]** Bổ sung carrier/type; liên kết run forecast, snapshot, config version, allocation version, rule version, scenario. Khuyến nghị dùng tổng nhiều forecast_date, không FK đơn giản tới một dòng forecast ngày |
+**[CỨNG]** run_date không đủ phân biệt rerun. Khuyến nghị dùng nhiều ngày forecast phải liên kết cả run/kỳ bảo vệ, không FK vào một dòng ngày. Không dùng chung một stock cho nhiều carrier/type. Tên REGION_INVENTORY giữ để đối chiếu thiết kế cũ, không xác nhận vị trí kho.
 
-**[MỀM]** Có thể bổ sung `OPEN_RECEIPTS` nhỏ cho lượng đã đặt, ETA và trạng thái; đây là phần hỗ trợ đề xuất, không đổi tên danh sách 12 bảng gốc thành hệ thống đã triển khai. Tổng in_transit_qty không đủ xác định hàng về trước/sau ngày cạn. Không có ETA thì “chưa đủ dữ liệu”, không xem hàng đang về là có sẵn ngay.
+## 3. SUPPLIER_CONFIG riêng từng đối tác
 
-## Phân bổ forecast xuống stock item
+Mentor đã xác nhận **ngưỡng tồn và quy tắc nhập khác nhau giữa carrier/đối tác**. Mỗi carrier phải có config riêng; không dùng một bộ tham số toàn hệ thống. Chưa có số ngưỡng cụ thể cho “Vina” hay đối tác khác.
 
-**[MỀM] Cập nhật cho activation/tuyến:** nếu dự báo tổng route, phân bổ xuống SKU/product_type trong cùng route bằng lịch sử cùng target tại origin. Nếu đã dự báo route × SKU/type thì tổng hợp lên route để chấm KPI và dùng cấp con tương ứng cho policy. Phương án kỹ thuật này cần kiểm thử, chưa có kết quả mới. Region × SKU → carrier/type ở B5 chỉ còn dùng cho nhánh v0.1 hoặc thử mô hình gộp có kiểm chứng.
+| Nhóm cấu hình | Nội dung |
+|---|---|
+| Scope/hiệu lực | carrier, product_type, SKU override nếu có, effective_from/to, config_version, scenario_id |
+| Policy | periodic review hoặc continuous (s,S); L, R, cơ sở tính IP |
+| SS/ROP | Phương pháp/giá trị SS, cách tính hoặc manual ROP, mức S nếu dùng |
+| Trigger/cảnh báo | Đại lượng so ngưỡng (usable on-hand/IP), ngưỡng riêng, toán tử < hoặc ≤, mức cảnh báo |
+| Lượng nhập | MOQ; pack_multiple tách riêng; giới hạn sức chứa, hạn dùng, EOL nếu có |
+| Truy vết | Source, lý do, status, người cấu hình và thời điểm cập nhật |
 
-**[MỀM]** Baseline là tỷ trọng quantity 30 ngày, fallback 90 ngày; cần đo ở cấp nhận phân bổ, không chỉ ở chuỗi cha. Cửa sổ này là đề xuất cần xác nhận/thử nghiệm, không phải quy tắc doanh nghiệp đã chốt.
+**[MỀM]** Ưu tiên override carrier/type/SKU → default cùng carrier/type. Không tự mượn cấu hình của carrier khác; không tìm được config thì `config_missing`. Các tham số có thể trùng nếu được khai báo chủ ý, không do fallback chung âm thầm.
 
-**[CỨNG]** Các điều kiện của B5:
+Kiểm tra uniqueness và khoảng hiệu lực không chồng lấn trong cùng scope/scenario; dùng config đã biết tại origin. `sku='*'` không phải SKU thật để ép qua FK; có thể dùng scope + SKU nullable. Rule phải ghi rõ xử lý **stock đúng ngưỡng**. Nguyên tắc cấu hình riêng đã xác nhận; số ngưỡng, policy và thứ tự override đề xuất vẫn cần mentor xác nhận.
 
-1. Chỉ dùng lịch sử tới origin; mẫu số cùng parent/target/cửa sổ. Parent là route cho nhánh activation mới, region/SKU cho v0.1. Không dùng share order-date như share activation mà không ghi là giả định và kiểm thử.
-2. Lọc offering hợp lệ; phân biệt chưa có lịch sử với không còn cung cấp. Nếu cả hai cửa sổ không có quantity, xuất `allocation_unavailable` hoặc mapping demo đã cấu hình, không chia cho 0.
-3. Tổng share bằng 1 chỉ khi toàn bộ nhu cầu cha còn được phục vụ. EOL làm mất khách thì tách nhu cầu giữ được và không phục vụ được, không ép chuyển toàn bộ sang carrier còn lại.
-4. Compatibility phải xét điểm đến, thiết bị, gói/quyền sử dụng và nguồn cung. Cùng region không cho phép tự thay country; không tự đổi eSIM sang physical_SIM.
-5. Giữ forecast số thực; chỉ làm tròn khi tạo lượng nhập. Nếu cần phân bổ số nguyên giữ tổng, dùng quy tắc phân phối phần dư thống nhất.
-6. Sai số share góp vào bất định cấp con; quantile cha nhân share không tự trở thành quantile đúng của từng con.
+## 4. Phân bổ xuống stock item
 
-## Safety Stock, ROP và periodic review
+Output cơ sở là tuyến × SKU, phân bổ tiếp product_type nếu chưa dự báo riêng. Nếu model chỉ dự báo tổng tuyến thì phân bổ xuống SKU/type để vẫn xuất đủ sản phẩm. Share dùng **quantity success/order_date UTC**, cùng parent và cửa sổ tại origin.
 
-**[CỨNG]** PDF có hai công thức lượng nhập chưa thống nhất kỳ bảo vệ. Không chọn công thức bằng cảm tính hoặc trộn trigger của policy này với target của policy khác.
+**[MỀM]** Có thể thử cửa sổ 30 ngày, fallback 90 ngày; chọn bằng validation và lưu allocation_version.
 
-**[MỀM]** Tách ba đại lượng:
+**[CỨNG]** Chỉ dùng lịch sử tới origin; lọc offering hợp lệ. Chưa có lịch sử khác không còn cung cấp; mẫu số mọi cửa sổ bằng 0 thì `allocation_unavailable` hoặc mapping scenario đã khai báo. Chỉ ép tổng share=1 khi toàn bộ lượng cha còn phục vụ được; EOL có phần giữ được/phần mất riêng. Không tự đổi country cùng region, eSIM sang physical_SIM hoặc successor không tương thích điểm đến/thiết bị/gói/nguồn cung.
 
-- `L`: thời gian từ đặt mua tới hàng sẵn sàng sử dụng, cùng đơn vị ngày với forecast; không dùng activation lag để điền L.
-- `R`: chu kỳ xem xét/đặt mua.
-- `IP`: on-hand khả dụng + đơn đang về được công nhận − nghĩa vụ chưa đáp ứng. Nếu usable stock đã trừ reservation thì không trừ lần hai; tránh trùng reservation/backorder.
+Forecast giữ số thực; chỉ làm tròn lượng nhập. Nếu phân bổ số nguyên, quy tắc phần dư phải giữ tổng. Backtest cấp nhận phân bổ; quantile cha nhân share không tự là quantile đúng của con vì còn sai số share.
 
-**[MỀM] / [XÁC NHẬN]** Default periodic review: mỗi R ngày đặt bổ sung lên S bảo vệ L+R ngày. L, R, service target, MOQ, manual ROP và policy cần mentor xác nhận ở câu 4; công thức sau là thiết kế đề xuất từ B6.2:
+## 5. Policy, SS và lượng nhập
+
+L là lead time mua hàng, R là chu kỳ review, cùng đơn vị ngày với forecast. **Activation lag không phải L.** IP = usable on-hand + receipts được công nhận − nghĩa vụ chưa đáp ứng; không trừ reservation hai lần hoặc trùng backorder.
+
+**[MỀM] / [XÁC NHẬN]** Công thức tham khảo cho carrier chọn periodic review: mỗi R ngày đặt tới S bảo vệ L+R ngày.
 
 ```text
-mean_demand_H = sum(forecast[t+h], h=1..H)
 H = L + R
-S = ceil(mean_demand_H + SS_H)
+S = ceil(sum(forecast[1..H]) + SS_H)
 q_raw = max(0, S - IP)
 q = 0                         nếu q_raw = 0
 q = max(MOQ, ceil(q_raw))      nếu q_raw > 0
 ```
 
-Nếu có bội số đóng gói m: `q = m × ceil(max(MOQ, q_raw)/m)` khi q_raw>0. **MOQ không đồng nghĩa bội số đóng gói**. Sau đó kiểm tra sức chứa, hạn dùng, EOL và cách xử lý thủ công khi ràng buộc xung đột.
+Nếu có pack_multiple=m, q=m×ceil(max(MOQ,q_raw)/m) khi q_raw>0. Sau đó kiểm tra hạn dùng, sức chứa, EOL và xử lý xung đột. **MOQ không phải bội số đóng gói.**
 
-Nếu mentor chọn **continuous review (s,S)**: `s = forecast demand trong L + SS_L`, dùng IP so với s để kích hoạt rồi đặt lên S đã định nghĩa. `ROP + forecast_7d` có thể là xấp xỉ L+7 trong policy phù hợp; không tự gọi là đếm đôi, nhưng phải định nghĩa rõ kỳ bảo vệ.
+Nếu carrier chọn continuous (s,S), dùng trigger so IP với s theo toán tử đã cấu hình rồi đặt lên S đã định nghĩa; s có thể tính bằng forecast trong L + SS_L hoặc manual ROP có nguồn. Không trộn trigger/target giữa hai policy. ROP+forecast_7d không tự là đếm đôi, phải xét kỳ bảo vệ.
 
-### Safety stock đề xuất
+**SS đề xuất:** heuristic velocity×safety_stock_days hoặc residual cộng dồn đúng horizon từ backtest không leakage:
+`SS_H=max(0, quantile_alpha(actual_H−forecast_H))`.
+Phương pháp/alpha/số ngày SS cấu hình riêng theo carrier; heuristic không chứng minh đạt service level. Không cộng quantile ngày thành quantile tổng. Công thức z×sigma×sqrt(L) chỉ là đối chứng dưới giả định thích hợp; cycle service level khác fill rate.
 
-**[MỀM]** `SS = velocity × safety_stock_days` là heuristic minh họa, không phải service level đã hiệu chỉnh. Lựa chọn sau baseline:
+## 6. Projected stock và cảnh báo
 
-```text
-SS_H = max(0, quantile_alpha(actual cumulative H - forecast cumulative H))
-S_H = mean_demand_H + SS_H
-```
+Khai báo giả định tiêu thụ theo quantity bán ngày order. Mỗi ngày mô phỏng theo thứ tự nhận–tiêu thụ đã chọn, xét ETA, reservation/backorder và bảo toàn tồn kho.
 
-Residual phải từ backtest không leakage, đúng horizon/cấp quyết định; ít mẫu thì gộp nhóm tương đồng và nêu hạn chế. Không cộng quantile ngày rồi gọi là quantile tổng horizon. `S_H` ở đây là mức tham chiếu trước bước làm tròn S của policy phía trên.
+- **[CỨNG]** Thiếu stock/config/ETA không coi là 0 hoặc hàng sẵn có. IP cao vẫn có thể thiếu trước ETA; tách lượng đặt khỏi rủi ro này.
+- velocity_7d=0 không suy ra OK hoặc SS/ROP bằng 0 là an toàn; dùng forecast cộng dồn/fallback, thiếu bằng chứng ghi “chưa đủ dữ liệu”. days_of_cover=N/A.
+- Ngày cạn chỉ trong horizon đầy đủ; nếu chưa cạn ghi “chưa thấy cạn trong horizon”. Ngoại suy có nhãn. Phân biệt hết tồn cuối ngày và thiếu nhu cầu trong ngày.
+- Giữ KPI cảnh báo trước ≥7 ngày và kiểm chứng. **[MỀM]** H≥max(L+R,14) là thử nghiệm cần xác nhận/backtest, không bảo đảm KPI.
+- Receipt/khuyến nghị có trạng thái/idempotency; rerun không tạo đề xuất lặp cho đơn đã chấp nhận.
 
-`SS = z × sigma_daily × sqrt(L)` chỉ là đối chứng khi nhu cầu ngày độc lập, gần dừng và L cố định; không áp cho chuỗi cực thưa hoặc L biến động như một mặc định chắc chắn. Service level là quyết định nghiệp vụ; cycle service level không đồng nhất fill rate.
+## 7. EOL
 
-### Lượng nhập, projected stock và cảnh báo
+Lifecycle thuộc offering/stock item, không dừng toàn bộ SKU vì một carrier ngừng. Lưu scope, source, người cấu hình, thời điểm xác nhận scenario và ngày cuối nhập/bán/kích hoạt/dịch vụ. Activation vẫn có thể phục vụ kiểm tra quyền sử dụng sau bán, không trở thành target.
 
-- **[CỨNG]** velocity_7d=0 không suy ra an toàn, SS/ROP bằng 0 hoặc ngày cạn giả. Dùng forecast cộng dồn/fallback dài hơn; thiếu bằng chứng thì “chưa đủ dữ liệu”. days_of_cover khi velocity=0 là N/A.
-- **[CỨNG]** Thiếu stock không phải stock=0; q_raw=0 không nâng MOQ. Tách lượng đặt khỏi nguy cơ thiếu trước ETA, dù IP tổng cao.
-- Projected stock cần ETA, reservation/backorder và thứ tự nhận hàng–tiêu thụ theo ngày. Phân biệt hết tồn cuối ngày với không đáp ứng đủ nhu cầu trong ngày.
-- **[CỨNG]** Giữ mục tiêu cảnh báo trước ≥7 ngày và chấm bằng mô phỏng; horizon chỉ cho phép kết luận trong cửa sổ dự báo, không bảo đảm mọi ca đạt mục tiêu. Nếu stock còn dương cuối horizon, nói “chưa thấy cạn trong horizon”; ngày cạn ngoại suy phải có nhãn.
-- **[MỀM] / [XÁC NHẬN]** Default M3 `H≥max(L+R,14)` cần mentor xác nhận; 14 ngày chỉ là khoảng thử nghiệm, tăng theo lead time được duyệt và đánh giá lại horizon mới. Đây không phải bảo đảm cảnh báo trước 7 ngày.
+Chỉ mask đoạn không còn chào bán theo effective date, giữ history. Successor không self-loop/vòng, phải active và tương thích country/thiết bị/gói/nguồn cung. Zero-run/lỗi chỉ là tín hiệu nghi gián đoạn. Hệ số chuyển đổi/cold-start là scenario, không gọi là đã học.
 
-## Lifecycle và EOL
-
-**[CỨNG]** Lifecycle thuộc offering/stock item (carrier + SKU + product_type, thêm region nếu thực tế cho phép nhiều vùng); không EOL toàn bộ SKU chung vì một carrier dừng. Cascade chỉ khi phạm vi thực sự là toàn carrier/SKU. Thống nhất vai trò `replace_sku`/`successor_sku`.
-
-Trong demo, lưu scope, người cấu hình scenario, thời điểm xác nhận cấu hình, effective dates và provenance; tách ngày cuối nhập/bán/kích hoạt/dịch vụ. Successor cần mapping scenario được khai báo; kiểm tra self-loop, vòng thay thế, active, country/thiết bị và năng lực cung ứng. Không xóa toàn bộ lịch sử SKU cũ, chỉ mask đoạn không còn chào bán theo effective date; giữ history cho audit/cold-start.
-
-**[MỀM]** EOL tối thiểu M3: nhóm nhập sự kiện scenario có phạm vi/ngày hiệu lực/lý do; rule chặn đặt mới đúng phạm vi, đánh giá tồn/đơn chưa kích hoạt và cảnh báo. Ba scenario: dừng có báo trước, dừng đột ngột không successor, tạm dừng rồi hồi phục. Hệ số chuyển đổi/cold-start là giả định sensitivity cần xác nhận, không phải tham số đã học. Checklist đầy đủ về EOL và các ca kiểm thử nằm ở [AGENTS](../AGENTS.md).
-
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [B4–B8, D1, D3]; sơ đồ ba khối/entity gốc từ PDF VII; cập nhật grain và luồng scenario theo [phạm vi người dùng](PROJECT_OVERVIEW.md), 25/09/2026. Các sửa đổi schema/luồng mới là đề xuất kỹ thuật.
+Demo gồm dừng có báo trước, dừng đột ngột không successor, suspended rồi hồi phục; có nhánh thông báo muộn/hủy thông báo. Luật EOL đầy đủ và ca kiểm thử tại [AGENTS](../AGENTS.md); đánh giá mô phỏng tại [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md).

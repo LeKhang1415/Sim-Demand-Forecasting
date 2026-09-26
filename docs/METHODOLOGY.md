@@ -1,38 +1,37 @@
-# Phương pháp luận
+# Phương pháp dự báo số lượng bán
 
-## Cấp dự báo và phạm vi diễn giải
+## Bài toán
 
-Yêu cầu gốc là **activation theo tuyến quốc gia–nhà mạng**, theo [PROJECT_OVERVIEW](PROJECT_OVERVIEW.md). Output và KPI phải được đánh giá ở cấp đó. Region × SKU trong review là **[MỀM]** phương án v0.1 dựa trên lượng bán theo ngày order; chưa có bằng chứng nó thay thế được target/cấp tuyến của đề bài.
+**Input:** quantity success theo order_date UTC, lịch và danh mục đã biết tại origin.
 
-**[CỨNG]** Phân biệt cấp forecast, route phân tích và stock item. Không đưa một giá trị carrier đơn lẻ làm categorical feature cho dòng Region × SKU có nhiều carrier. Phân bổ xuống cấp kho phải được backtest riêng; forecast tốt ở cấp cha chưa chứng minh quyết định tốt ở cấp con.
+**Output:** forecast mỗi ngày cho **tất cả 10 SKU × tuyến (country, carrier) hợp lệ**, gồm cả hai product_type; cộng SKU/type để đánh giá tổng tuyến.
 
-**[MỀM]** Bắt đầu bằng chuỗi activation theo route=(country, carrier); có thể thử route × SKU rồi cộng về route, hoặc mô hình global dùng chung. Đây là điều chỉnh thiết kế để đáp ứng đề bài, chưa phải kết quả đã kiểm chứng. Không gộp khác country/carrier chỉ để đạt KPI. Chi tiết filter, đơn vị và cửa sổ quan sát theo [DATA_CONTRACT v0.2](DATA_CONTRACT.md), còn cần chốt tại [DECISIONS](DECISIONS.md).
+Target đã xác nhận ở [DATA_CONTRACT v0.3](DATA_CONTRACT.md). Activation chỉ tham khảo. Top 10 tuyến xếp theo tổng quantity success trong train chỉ phục vụ KPI MAPE ≤20%; các tuyến còn lại vẫn được dự báo và đánh giá.
 
-## Baseline và mô hình ứng viên
+## Cách làm
 
-| Phạm vi | Ứng viên đề xuất | Cách quyết định |
-|---|---|---|
-| Mỗi tuyến được đánh giá | Naive và moving average theo đề bài; **[MỀM]** MA28/56, seasonal naive kế thừa review | Chạy lại trên activation/tuyến; không dùng kết quả order/Region × SKU làm benchmark tuyến |
-| Nhóm thưa | **[MỀM]** Thêm SBA hoặc TSB nếu kịp | Không mặc định thắng; xét MAE, bias, sai số tổng horizon và hệ quả stockout trong mô phỏng |
-| Mô hình theo tuyến hoặc dùng chung | SARIMA / Prophet / LightGBM là các lựa chọn trong đề bài; **[MỀM]** thử một LightGBM global trước | Chấm từng tuyến, chọn model/fallback bằng validation; “chọn cho từng tuyến” không bắt buộc huấn luyện mô hình phức tạp riêng cho mọi tuyến |
-| Kiểm tra tính ổn định | **[MỀM]** Có thể tổng hợp tuần | Không trình metric tuần như metric ngày |
+1. Chuẩn hóa orders, lọc success, cộng quantity theo ngày/tuyến/SKU; ghi rõ điều kiện điền zero.
+2. Chạy naive và moving average cho toàn bộ chuỗi.
+3. So mô hình ứng viên bằng rolling-origin validation, cùng split/horizon/target.
+4. Chọn model hoặc fallback cho từng tuyến dựa trên validation; xuất đủ SKU và giữ tổng tuyến.
+5. Phân bổ xuống product_type nếu cần, backtest cấp stock item rồi mô phỏng tồn kho theo config từng carrier.
 
-Poisson loss là ứng viên cho quantity không âm trong D2; so với regression phù hợp, không giả định Poisson mô tả đúng toàn bộ phân phối. Phạm vi thử Prophet nếu cần milestone đã ghi ở [ROADMAP](ROADMAP.md), không mở rộng trước khi baseline/backtest ổn định.
+| Lựa chọn **[MỀM]** | Mục đích / điều kiện |
+|---|---|
+| Naive, seasonal naive, MA7/28/56 | Baseline dễ giải thích; cửa sổ chọn bằng validation |
+| LightGBM global trên tuyến × SKU | Dùng chung lịch sử nhiều chuỗi; so với baseline trước khi chọn |
+| SARIMA / Prophet | Thử khi phù hợp đặc điểm chuỗi; đề bài không bắt buộc chạy đủ mọi model |
+| SBA / TSB | Ứng viên cho chuỗi thưa, không mặc định tốt hơn |
+| Dự báo tổng tuyến rồi phân bổ SKU/type | Phương án thay thế khi chuỗi con quá thưa; vẫn phải xuất đủ 10 SKU/tuyến và đo lỗi phân bổ |
 
-Feature và ablation ở [FEATURE_SYSTEM](FEATURE_SYSTEM.md); metric, rolling-origin và benchmark chẩn đoán ở [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md). Không chọn mô hình chỉ bằng MAE trên chuỗi thưa vì forecast toàn 0 có thể không phục vụ nhu cầu cộng dồn.
+Có thể thử Poisson loss cho quantity không âm; không coi đó là bằng chứng về phân phối dữ liệu. Region × SKU là cấp gộp của benchmark v0.1; nếu thử lại, vẫn phải đưa output về đúng tuyến × SKU và backtest cấp nhận phân bổ.
 
-## Tham chiếu tương tự từ mục C của review
+## Điều kiện chọn kết quả
 
-Bảng sau giữ nguyên so sánh và đường dẫn mục C của review v0.1. Các nhắc tới Region × SKU, 80 chuỗi và share là bối cảnh phương án cũ, không phải xác nhận phù hợp cho activation/tuyến; cần thực nghiệm lại. Đây là so sánh phương pháp, không khẳng định retail và SIM/eSIM có cùng cơ chế kinh doanh.
+- **[CỨNG]** Feature/lag/rolling chỉ dùng lịch sử tại origin; dự báo nhiều bước không được lấy actual tương lai. Xem [FEATURE_SYSTEM](FEATURE_SYSTEM.md).
+- **[CỨNG]** Không chọn Top 10, feature, model hoặc cửa sổ phân bổ bằng test. Top 10 dùng tổng quantity success của train, gộp SKU/type.
+- Báo MAPE_positive với coverage, MAE/WAPE/bias và sai số tổng horizon; không chọn model chỉ vì MAE thấp trên nhóm thưa.
+- Forecast số thực; tổng SKU bằng tuyến, tổng type bằng SKU. Forecast tốt ở cấp cha chưa chứng minh quyết định kho tốt ở cấp con.
+- Không dùng một carrier hay một thuộc tính SKU đại diện cho dòng tổng hợp nhiều carrier/SKU. Lễ Việt Nam là ứng viên theo thị trường bán; tác động vẫn cần ablation, không nhân thêm hệ số mùa vụ chưa tái lập.
 
-| Nguồn cụ thể | Bài học từ nguồn | Áp dụng cho SIGMA |
-|---|---|---|
-| [M5 — repository của ban tổ chức](https://github.com/Mcompetitions/M5-methods) | Có dữ liệu, benchmark và phương pháp dự thi cho dự báo bán hàng phân cấp. | Giữ baseline và cấu trúc SKU/địa điểm là đúng hướng. Học cách tái lập evaluation, đánh giá nhiều cấp và giữ tổng; không sao chép độ phức tạp của giải thắng hoặc cho rằng M5 đã kiểm chứng rule kho của SIGMA. |
-| [Long et al., 2023 — Scalable Probabilistic Forecasting in Retail with Gradient Boosted Trees](https://arxiv.org/abs/2311.00993) | Đề xuất dự báo ở cấp gộp bớt thưa rồi phân rã xuống cấp quyết định; thử trên dữ liệu doanh nghiệp, Favorita và M5. | Là tham chiếu sát với Region × SKU → carrier/type. Hướng nhóm chọn có căn cứ, nhưng hiệu quả share 30/90 ngày vẫn phải đo trên dữ liệu SIGMA. Bài học thêm là đánh giá bất định ở cấp nhận phân bổ. |
-| [Amazon, 2017 — Probabilistic demand forecasting at scale](https://www.amazon.science/publications/probabilistic-demand-forecasting-at-scale) | Hệ thống retail kết hợp chuẩn bị dữ liệu, feature, forecast xác suất, evaluation và experimentation. | Nhóm đã tách forecast và decision là hợp lý. Nên bổ sung run metadata và uncertainty; với 80 chuỗi không cần sao chép Spark/hạ tầng triệu sản phẩm. |
-| [NC State — Safety Stock Analysis](https://scm.ncsu.edu/scm-articles/article/safety-stock-analysis-inventory-management-models-a-tutorial) | Safety stock nhằm bù bất định demand/lead time, với đánh đổi mức phục vụ và tồn kho. | Rule theo số ngày là baseline demo dễ hiểu. Phải chốt lead time/service target, rồi đo kết quả inventory; không gọi một hệ số ngày tùy chọn là safety stock tối ưu. |
-| [FPP3 — Rolling-origin evaluation](https://otexts.com/fpp3/tscv.html) | Đánh giá tại nhiều origin chỉ dùng quá khứ và đo đúng horizon cần dự báo. | Chia theo thời gian của nhóm là đúng nhưng chưa đủ. Bổ sung validation, final test và evaluation 7 bước thực; không dùng lag actual tương lai. |
-
-Điểm giữ lại từ bản nháp: phân biệt dữ liệu thật/giả định, target quantity, baseline trước mô hình, forecast theo SKU và xử lý thiếu stock/MOQ/ETA. Đánh giá nối tiếp **forecast → allocation → policy**, không suy từ chất lượng forecast cha sang hiệu quả kho con.
-
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [A3, B1–B3, B5, C, D2]; cập nhật định hướng theo [đề bài người dùng cung cấp](PROJECT_OVERVIEW.md), 25/09/2026. Cách tổ chức chuỗi/mô hình mới là đề xuất, chưa có metric mới.
+Chi tiết split/metric ở [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md); phân bổ/policy ở [ARCHITECTURE](ARCHITECTURE.md). Tham khảo phương pháp lịch sử được giữ tại mục C của [review](../Review_SIGMA_M2_M3.md).

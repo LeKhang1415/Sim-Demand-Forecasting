@@ -1,30 +1,30 @@
-# Hệ thống feature đề xuất
+# Feature cho dự báo quantity sold
 
-**[MỀM]** Các cửa sổ feature kế thừa review B2, chưa được xác nhận trên target activation/tuyến. Theo [DATA_CONTRACT v0.2](DATA_CONTRACT.md), lag/rolling phải tính lại theo sự kiện kích hoạt và grain đã khai báo; không tái dùng feature order-date dưới tên activation. Chọn bằng train/validation; tra [DECISIONS](DECISIONS.md).
+Target: quantity success theo **order_date UTC × tuyến × SKU**, theo [DATA_CONTRACT v0.3](DATA_CONTRACT.md). Feature tạo riêng trong từng chuỗi, chỉ dùng dữ liệu đã biết tại forecast origin. Các lựa chọn dưới đây là **[MỀM]**, chọn bằng train/validation.
 
-## Danh sách ứng viên
+## Feature ứng viên
 
-| Nhóm | Feature | Trạng thái và điều kiện |
+| Nhóm | Feature | Điều kiện |
 |---|---|---|
-| Định danh | destination_country, carrier cho tuyến; sku nếu mô hình tách SKU; region là chiều tổng hợp | **[MỀM]** Điều chỉnh cho yêu cầu tuyến; không nhầm carrier là feature hợp lệ trên một dòng tổng hợp nhiều carrier |
-| Lịch cơ bản | Ngày trong tuần, tháng | **[MỀM]** Lịch của ngày cần dự báo, cùng quy ước ngày của contract |
-| Lag | Lag 1/7/14/28 | **[MỀM]** Theo từng chuỗi; chỉ lấy giá trị đã biết tại origin |
-| Rolling | Mean 7/28/56; độ lệch chuẩn 28 ngày | **[MỀM]** Shift trước tổng hợp khi dự báo ngày t từ dữ liệu tới t−1 |
-| Độ thưa | Tỷ lệ zero 28/56 ngày; số ngày từ lần bán gần nhất | **[MỀM]** Tính từ lịch sử tại origin; không suy ra EOL chỉ từ khoảng trống |
-| Thuộc tính SKU | data_gb, validity_days, plan_type | **[MỀM]** Dùng trực tiếp khi dòng ứng với một SKU; tuyến có nhiều SKU không được gán tùy ý một thuộc tính. Có thể bỏ nhóm này khi dự báo tổng tuyến; cố định theo SKU không tạo thông tin thời gian mới |
-| Direct multi-horizon | horizon_day và lịch origin+h | **[MỀM]** Dùng cùng thống kê tại origin để dự báo quantity ở origin+h |
-| Lễ/mùa hè | Feature lịch lễ và mùa hè trong calendar | **[MỀM] / [XÁC NHẬN]** Thử riêng sau khi chốt ý nghĩa/nguồn calendar; so có/không calendar bằng ablation |
+| Định danh | country, carrier, sku; region để tổng hợp; type nếu tách chuỗi | Chỉ dùng giá trị đúng với grain của dòng |
+| Lịch cơ bản | Thứ, tháng, horizon_day, lịch origin+h | Biết trước, theo UTC; calendar phủ mọi ngày forecast |
+| Lag | 1/7/14/28 | Lấy lịch sử tại origin, không lag actual tương lai |
+| Rolling | Mean 7/28/56, std 28 | Với dự báo ngày t từ dữ liệu đến t−1: shift trước rolling |
+| Độ thưa | Tỷ lệ zero 28/56, số ngày từ lần bán gần nhất | Tính tới origin; không suy EOL từ zero-run |
+| Thuộc tính SKU | plan_type, data_gb, validity_days | Chỉ trên dòng một SKU; không chọn đại diện tùy ý cho tổng tuyến |
+| Lễ/mùa du lịch | Lễ Việt Nam, mùa hè; lịch điểm đến nếu có lý do | Calendar tự dựng có nguồn/version; thử riêng có/không feature |
 
-Calendar có nhãn lễ không đồng nghĩa đã xác nhận tác động nhu cầu. Khách đến Đông Á không chỉ chịu lịch lễ Đông Á; dữ liệu thiếu thị trường nguồn của khách nên không tự chọn lịch quốc gia chi phối. Các hệ số mùa vụ chưa tái lập được không được biến thành tham số chắc chắn hoặc dùng để nhân mùa vụ hai lần.
+Khách mua ở Việt Nam nên lịch lễ Việt Nam là ứng viên phù hợp để kiểm tra. Điểm đến nước ngoài không tự chứng minh lịch nước đó chi phối lượng mua. Không coi nhãn calendar là tác động đã được xác nhận. Hệ số mùa vụ chưa tái lập phải có công thức/cửa sổ/mẫu số/trọng số/xử lý xu hướng và code; không nhân mùa vụ hai lần.
 
-## Ràng buộc thông tin tại origin
+## Luật chống leakage **[CỨNG]**
 
-- **[CỨNG]** Không đưa feature hoặc nhãn chứa thông tin sau origin vào đầu vào dự báo. Nhãn huấn luyện origin+h chỉ dùng khi đã nằm trước cutoff của tập huấn luyện. Các phép lag/rolling phải ở trong chuỗi; rolling trên ngày t dùng dữ liệu tới t−1 phải shift trước tổng hợp.
-- **[CỨNG]** Kiểm thử đúng nhiều bước: không dùng lag_1 với actual ngày tương lai để dự báo bước tiếp theo. Direct dùng thống kê tại origin; recursive phải thay actual chưa biết bằng forecast trong training/evaluation tương ứng.
-- Giá/khuyến mãi tương lai chỉ dùng khi đã biết tại origin. Giá bình quân của các đơn trong ngày cần dự báo, revenue và quantity cùng ngày là leakage.
-- Không dùng activation/trạng thái tương lai; CSV chỉ có trạng thái cuối nên phải công bố giả định nhãn đủ chín.
-- Không đặt một carrier categorical đơn lẻ trên dòng Region × SKU có nhiều carrier. Nếu cần, chỉ dùng tỷ trọng lịch sử tại origin; review chưa yêu cầu bước này cho M2.
-- Không dùng CUSTOMER tổng hợp toàn kỳ làm feature. Không dùng `customer_type`, `is_suspected_anomaly`, `anomaly_note` trong feature/logic.
-- **[CỨNG]** Khóa feature trước final test; không dùng test để chọn cửa sổ hoặc cách xử lý nhóm thưa. Quy tắc nhãn direct/cutoff ở [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md).
+- Lag/rolling nằm trong từng chuỗi; feature không chứa target hay thông tin sau origin.
+- Direct multi-horizon dùng thống kê tại origin + horizon_day/lịch origin+h. Một training row chỉ hợp lệ khi **toàn bộ nhãn** đã nằm trước cutoff huấn luyện.
+- Recursive phải dùng forecast thay actual chưa biết trong training/evaluation tương ứng; không dự báo bước sau bằng actual của bước tương lai.
+- Không dùng quantity, revenue, giá bình quân đơn của ngày cần dự báo. Giá/khuyến mãi tương lai chỉ dùng nếu đã biết tại origin.
+- Activation/trạng thái tương lai không hợp lệ; CSV chỉ có trạng thái cuối nên backtest phải công bố giả định nhãn đủ chín.
+- Không dùng `customer_type` trong phân tích/feature; không dùng `is_suspected_anomaly`, `anomaly_note` trong logic/feature; không dùng CUSTOMER tổng hợp toàn kỳ.
+- Không đưa một carrier đơn lẻ lên dòng Region × SKU chứa nhiều carrier; share nếu dùng chỉ từ lịch sử tại origin.
+- Khóa feature và cửa sổ trước final test; không tuning bằng test. Actual test đã trôi qua có thể dùng ở origin mới, actual sau origin không được dùng.
 
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [phạm vi, A2.4, A2.6, B1–B4, B7.f, D2]; điều chỉnh grain theo [đề bài](PROJECT_OVERVIEW.md), 25/09/2026.
+Chọn Top 10 theo quantity success trong train, không dùng feature hoặc bảng xếp hạng toàn kỳ để thay quy tắc này. Xem [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md) và [AGENTS](../AGENTS.md).

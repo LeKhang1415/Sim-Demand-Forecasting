@@ -1,43 +1,40 @@
-# Decision log — phạm vi hiện tại và 12 câu hỏi gốc
+# Quyết định hiện hành
 
-## Cập nhật có hiệu lực ngày 25/09/2026
+## Các xác nhận đã có
 
-| Mã | Nội dung đã được cung cấp/xác nhận | Trạng thái | Nguồn/người cung cấp | Ngày |
-|---|---|---|---|---|
-| S1 | Chỉ có orders được cấp; nhóm tự dẫn xuất hoặc giả định dữ liệu khác. Không chờ nguồn inventory/config thật | Đã xác nhận phạm vi | Người dùng trong trao đổi này | 2026-09-25 |
-| S2 | Dự báo lượng kích hoạt theo ngày và tuyến quốc gia–nhà mạng | Đã ghi nhận yêu cầu gốc | Ảnh đề bài T2 do người dùng cung cấp | 2026-09-25 |
-| S3 | MAPE ≤20% ở Top 10 tuyến; cảnh báo trước ≥7 ngày; dashboard dự báo và sai số thực tế | Đã ghi nhận yêu cầu gốc, chưa chứng minh đạt | Ảnh đề bài T2 do người dùng cung cấp | 2026-09-25 |
+Ngày dưới đây là **ngày ghi nhận qua người dùng**, không tự gán ngày mentor phê duyệt cấu hình.
 
-[Ảnh nguồn](PROJECT_REQUIREMENTS.png) và [PROJECT_OVERVIEW](PROJECT_OVERVIEW.md) ưu tiên hơn đề xuất cũ khi mâu thuẫn phạm vi. Xác nhận S1 không đồng nghĩa mentor đã duyệt mọi stock/L/MOQ giả định; S2/S3 không tự chốt filter, đơn vị target hoặc cách chấm KPI.
+| Mã | Nội dung | Nguồn/trạng thái | Ngày ghi nhận |
+|---|---|---|---|
+| S1 | Chỉ được cấp orders; nhóm tự dựng dữ liệu dẫn xuất và scenario, không chờ kho/config thật | Người dùng xác nhận phạm vi | 25/09/2026 |
+| S2 | Target chính là **quantity sold: SUM(quantity) của success theo order_date UTC**; activation chỉ tham khảo | Xác nhận mentor do người dùng cung cấp: “Mình chỉ quan tâm số bán ra chứ không quan tâm nó có active hay không.” | 26/09/2026 |
+| S3 | MAPE ≤20% ở Top 10 tuyến; cảnh báo trước ≥7 ngày; dashboard actual/forecast/sai số | KPI giữ từ đề bài, chưa có kết quả nghiệm thu | 25/09/2026 |
+| S4 | Công ty ở Việt Nam, chỉ bán cho khách ở Việt Nam đi du lịch quốc tế; country là nước sử dụng, carrier là nhà mạng nước đích | Người dùng làm rõ nghiệp vụ | 26/09/2026 |
+| S5 | SS/ROP/MOQ/ngưỡng cảnh báo và quy tắc nhập phải cấu hình riêng theo carrier/đối tác | Mentor xác nhận qua người dùng: “Báo hết hàng tồn kho cho từng đối tác sẽ khác nhau”; chưa cung cấp giá trị ngưỡng | 26/09/2026 |
+| S6 | Dự báo tất cả 10 SKU × tuyến hợp lệ; Top 10 chỉ dùng chấm KPI, xếp theo tổng quantity success trong train | Người dùng cập nhật phạm vi; train-only giữ luật chống leakage | 26/09/2026 |
 
-## Bảng D1 — giữ nguyên ba cột gốc để đối chiếu
+Xác nhận mới ưu tiên hơn [ảnh đề bài](PROJECT_REQUIREMENTS.png) và các đề xuất lịch sử trong [review](../Review_SIGMA_M2_M3.md). Không cần xác nhận lại target, filter success, đơn vị quantity hoặc phạm vi toàn bộ sản phẩm.
 
-**[XÁC NHẬN]** Cột default và câu hỏi mentor là nội dung review v0.1, không phải toàn bộ kế hoạch hiện tại. Các đề xuất xin dữ liệu, order-date/Region × SKU và “nếu phải giữ” KPI đã có cập nhật ở cột cuối. Không thực hiện mặc định cũ trái S1–S3.
+## 12 câu hỏi — trạng thái cập nhật
 
-Số đầu cột Câu là question_id. Trạng thái `chưa xác nhận` nghĩa là còn chi tiết cần chốt; `đã đổi` ở câu 5 là thay phạm vi do người dùng xác nhận, không gán cho mentor. Các default chưa được xác nhận vẫn là **đề xuất — cần mentor xác nhận** cho nghiệm thu.
+| Câu | Quyết định hiện hành | Còn mở / trạng thái |
+|---|---|---|
+| 1. Cấp dự báo? | Output ngày × (country, carrier) × SKU cho đủ 10 SKU trên mọi tuyến hợp lệ; cộng SKU/type để đánh giá tuyến | Phạm vi đã xác nhận. Cấp huấn luyện/global hay riêng là **[MỀM]** |
+| **2. Order hay activation?** | **Order quantity sold**, theo order_date UTC; activation không phải target | **Đã xác nhận theo S2**. Sự kiện trừ kho trong M3 vẫn phải khai báo như giả định |
+| 3. Success hay refunded? | Chỉ success trong target chính; không yêu cầu activation có giá trị | **Đã chốt filter**. Success+refunded chỉ là sensitivity tùy chọn; refunded không chứng minh hoàn kho |
+| 4. SS/ROP chung hay riêng? | Cấu hình riêng theo **carrier**, tách type và cho phép override SKU; không áp một bộ tham số chung | **Đã xác nhận nguyên tắc**. L/R, MOQ, SS, ROP, mức cảnh báo, policy và xử lý đúng ngưỡng còn cần mentor xác nhận |
+| 5. Nguồn tồn kho? | Stock, config và receipts/ETA là scenario do nhóm dựng | **Đã xác nhận S1**; từng giá trị có source/lý do/status/version |
+| 6. Kho map theo gì? | Stock item có country/carrier/SKU/type; region để tổng hợp, không mặc nhiên là kho vật lý | Tổ chức kho logic là **[MỀM]**; giữ riêng hàng không thay thế được |
+| 7. Chuỗi thưa? | Vẫn có forecast hoặc lý do thiếu cho mọi tuyến × SKU; so baseline/global/fallback trên validation | Model và cửa sổ là **[MỀM]**; xét MAE, bias, tổng horizon và stockout |
+| 8. MAPE ≤20%? | Top 10 theo tổng quantity success trong train; tính trên tổng tuyến, kèm MAPE_positive/coverage/MAE/WAPE | KPI và cách xếp hạng đã chốt. Đề xuất metric ngày, báo từng tuyến và macro; quy tắc nghiệm thu macro hay từng tuyến **cần mentor xác nhận** |
+| 9. Chi phí? | Giá vốn có trong orders; chi phí lưu kho/thiếu hàng/đặt mua nếu dùng là scenario | Không tối ưu chi phí thật khi thiếu thành phần; giá trị scenario cần xác nhận |
+| 10. Dashboard? | Actual quantity sold, forecast, sai số của toàn bộ sản phẩm; bộ lọc Top 10; stock/cảnh báo theo carrier | Nội dung chính đã rõ; bố cục/drill-down là **[MỀM]** |
+| 11. Tự động mức nào? | Đề xuất tự động tính khuyến nghị, con người quyết định mua; không tự gửi đơn | **[XÁC NHẬN]** Luồng duyệt/override chưa chốt |
+| 12. EOL/SKU mới? | Sự kiện và successor scenario có scope/effective date; giữ history, kiểm tra tương thích, không suy EOL thật từ zero | Luật kỹ thuật ở [AGENTS](../AGENTS.md); hệ số chuyển đổi/cold-start còn **[MỀM] / [XÁC NHẬN]** |
 
-| Câu | Default đề xuất | Điều cần chốt với mentor | Trạng thái | Người quyết định | Ngày | Phần pipeline bị ảnh hưởng | Quyết định cập nhật |
-|---|---|---|---|---|---|---|---|
-| 1. Tổng vùng hay vùng × SKU? | 80 Region × SKU; tổng vùng lấy bằng cộng các SKU. | Cấp nghiệm thu và có phải phục vụ đủ 8 vùng ngay M2 không. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Target/grain, forecast, evaluation | Ảnh yêu cầu output theo tuyến quốc gia–nhà mạng. Region × SKU chỉ còn là phương án gộp/phụ; chốt grain, khóa tuyến và cách đưa output về tuyến trước nghiệm thu. |
-| 2. Order hay activation? | Quantity success theo order_date UTC để khớp validation; giữ activation để phân tích nghiệp vụ. | Sự kiện phát sinh nhu cầu/trừ kho, timezone và thời điểm chốt ngày. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Target, UTC, daily grid, cutoff | Yêu cầu gốc là lượng kích hoạt. Chuyển định hướng target sang activation_date; order_date giữ tham chiếu v0.1. Còn chốt UTC, lượng quantity/số đơn, cửa sổ quan sát và sự kiện trừ kho mô phỏng. |
-| 3. Success hay thêm refunded? | Success chính; sensitivity success+refunded, không nhập nhằng với hàng trả lại. | Hoàn tiền có giải phóng hàng/mã không, lý do hoàn và nhãn có độ trễ bao lâu. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Target, sensitivity, inventory flows | Với activation, đánh giá riêng success và success+refunded có activation. Chưa chốt filter; không suy refunded là hoàn kho. |
-| 4. SS/ROP chung hay theo SKU? | Tham số mặc định theo carrier/type; override SKU khi có căn cứ. SS/ROP tính riêng cho stock item, không copy cùng lượng tuyệt đối cho mọi SKU. | Carrier có đúng NCC không; L, R, service target, MOQ và ưu tiên manual ROP. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Supplier config, policy SS/ROP/MOQ | Nhóm tự cấu hình L/R/MOQ/service target và policy theo scenario có nguồn/lý do/sensitivity. Không chờ cấu hình NCC thật; các giá trị cụ thể còn cần xác nhận cho nghiệm thu. |
-| 5. Nguồn tồn kho? | Xin snapshot + open receipts/ETA; nếu chưa có thì scenario minh họa với nguồn/giả định rõ. | Có dữ liệu thật trước thời điểm khóa M3 không; người cung cấp và tần suất. **Cần mentor xác nhận.** | đã đổi | Người dùng — xác nhận phạm vi dữ liệu | 2026-09-25 | Snapshot, receipts, scenario | Người dùng xác nhận chỉ được cấp orders. Inventory, snapshot và receipts/ETA do nhóm giả định/sinh qua mô phỏng; bỏ phụ thuộc xin hoặc chờ nguồn kho thật. |
-| 6. Kho map theo gì? | Một kho logic/region cho demo, stock item theo carrier × SKU × type. | Region destination có thực sự là vị trí kho hoặc pool có thể dùng chung không. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Stock item, inventory, allocation | Kho logic/region là giả định tổ chức mô phỏng cần ghi rõ; không cần kiểm chứng kho vật lý để chạy demo. Tách stock item theo carrier/SKU/type nếu giữ thiết kế Mục 8.5. |
-| 7. Chuỗi thưa? | Có forecast cho mọi chuỗi; MA28/56, SBA/TSB/global model là ứng viên; chấm MAE, bias, total-horizon và mô phỏng thay vì ép MAPE. | Tiêu chí chấp nhận nhóm thưa, không chỉ “nới 20%”. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Baseline/model, metric nhóm thưa | Đánh giá lại độ thưa trên activation/tuyến; số liệu order/Region × SKU chỉ là tham chiếu. Giữ metric bổ sung nhưng không thay KPI đề bài. |
-| 8. MAPE ≤20%? | Nếu phải giữ, đề xuất MAPE_positive macro-average Top 10 khóa từ train, công bố từng chuỗi và coverage; không hứa trước đạt 20%. | Mỗi chuỗi hay trung bình, theo ngày hay tổng tuần, xử lý zero và quyết định khi KPI không khả thi. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Top 10, metric, nghiệm thu | MAPE ≤20% ở Top 10 tuyến là mục tiêu gốc. Còn chốt cách chọn tuyến bằng train, lọc target, macro/từng tuyến, ngày/tổng horizon và xử lý zero; không tự bỏ hoặc coi KPI đã đạt. |
-| 9. Chi phí? | Dùng giá vốn cho báo cáo phơi nhiễm vốn, không tối ưu lợi nhuận/EOQ khi thiếu holding/shortage/order cost. | Có cần bài toán tối ưu thật và có cung cấp đủ thành phần chi phí không. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Báo cáo vốn, phạm vi tối ưu | Không được cấp thêm chi phí vận hành. Có thể dựng chi phí scenario nếu mở rộng tối ưu tài chính, phải ghi giả định/sensitivity; không gọi là chi phí thật. |
-| 10. Dashboard? | Actual/forecast 7 ngày, MAE/WAPE/MAPE có coverage, forecast age, stock/ETA, SS/ROP, cover/stockout horizon, qty và lý do cảnh báo; nhãn minh họa. | Chỉ số bắt buộc, đối tượng sử dụng, mức lọc carrier/type có drill-down phân bổ. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Output/dashboard, drill-down | Dashboard dự báo và sai số thực tế là yêu cầu gốc; actual activation lấy từ orders trong cửa sổ đủ quan sát. Stock/ETA/stockout là mô phỏng, phải có nhãn riêng. |
-| 11. Tự động mức nào? | Tự động tính khuyến nghị; con người quyết định mua. Không tự gửi đơn cho NCC. | Có cần phiếu đề xuất nội bộ, người phê duyệt và lưu vết override không. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Recommendation, approval/override | — |
-| 12. EOL/SKU mới? | Lifecycle do vận hành xác nhận; chặn nhập đúng offering, giữ history, successor phải tương thích; cold-start bằng offering tương đồng và hệ số scenario. | Ngày cuối bán/kích hoạt/dịch vụ, grace theo hợp đồng, khả năng xả/chuyển đổi và quyền xác nhận EOL. **Cần mentor xác nhận.** | chưa xác nhận | — | — | Lifecycle, successor, cold-start | EOL là mở rộng từ PDF. Dùng sự kiện giả định có scope/effective date trong scenario, không chờ log vận hành và không suy ngừng thật chỉ từ zero. |
+## Version và những điểm cần chốt tiếp
 
-## Cách cập nhật và việc còn mở
-
-- Giữ nguyên ba cột nguồn; ghi quyết định hiện hành ở cột cuối cùng người/ngày khi có xác nhận. Không coi code/config đã chạy là mentor đã duyệt.
-- Có thể bắt đầu các bước kỹ thuật đảo ngược và dựng scenario khai báo rõ trong lúc chờ; không yêu cầu cấp kho/config/receipt thật để tiếp tục.
-- Ưu tiên chốt câu 1–3, 8: định nghĩa tuyến, quantity hay số đơn, success/refunded, cửa sổ activation và metric nghiệm thu. Không xin xác nhận lại việc chỉ có orders đã được người dùng làm rõ.
-- Câu 4/6/9/12 là thiết kế giả định mô phỏng và mức chi tiết cần nghiệm thu; câu 10/11 là output và mức tự động hóa. Các giá trị scenario ghi source/lý do/status/version, thử sensitivity; không biến thành quy tắc doanh nghiệp.
-- MAPE ≤20% và cảnh báo trước ≥7 ngày là mục tiêu giữ nguyên. Cách xử lý zero, ca không đủ quan sát, trường hợp không đạt và cách tổng hợp cần thống nhất, không tự sửa KPI.
-- Tài liệu hiện dùng contract v0.2; thay filter/timezone/grain phải version hóa và chạy lại phần phụ thuộc, không tái gắn số liệu v0.1 cho target mới.
-
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [D1, B1–B8, D2–D3]; [ảnh đề bài T2](PROJECT_REQUIREMENTS.png) và xác nhận phạm vi của người dùng ngày 25/09/2026.
+- **Contract v0.3:** quantity success/order_date UTC/tuyến × SKU. v0.2 activation đã hạ thành tham khảo tùy chọn; v0.1 order/Region × SKU chỉ là benchmark khác grain.
+- Cần chốt quy tắc nghiệm thu MAPE (macro hay từng tuyến), horizon/refit, policy và giá trị cấu hình từng carrier. Có thể triển khai đề xuất có version, không biến chúng thành luật đã duyệt.
+- Mọi giả định lưu source, lý do, status, version, scenario_id và seed nếu có. Đổi target/filter/timezone/grain phải version hóa, tính lại artifact phụ thuộc.
+- Bảng D1 gốc được giữ tại review để tra lịch sử; không dùng trạng thái “chưa xác nhận” cũ để mở lại S1–S6.

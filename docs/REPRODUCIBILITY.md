@@ -1,7 +1,13 @@
-# Reproducibility — TODO
+# Tái lập — chờ pipeline sản phẩm
 
-Chưa có pipeline code, mục này sẽ mô tả cách cài môi trường, lệnh chạy, checksum nguồn và versioning (theo quy ước ở [DATA_CONTRACT.md](DATA_CONTRACT.md)) khi pipeline ở D2 hoàn thành.
+Hiện chỉ có script kiểm chứng trong `review_work/`. Khi triển khai, bổ sung lệnh cài/chạy thực và artifact tương ứng:
 
-TODO bổ sung theo phạm vi orders-only: ghi target/filter/grain/cửa sổ activation, nguồn lịch, config và quy tắc sinh scenario, seed nếu có; phân biệt artifact v0.1 với v0.2. Không đặt điều kiện tải/cấp thêm dữ liệu kho thật hoặc viết lệnh cài đặt giả định.
+1. Checksum orders, môi trường/thư viện và seed.
+2. Contract **v0.3**: quantity success/order_date UTC, cửa sổ 01/01/2024–31/12/2025, grain tuyến × SKU và catalog tại origin.
+3. Đối soát 100.000 đơn, 93.104 success, **118.296 đơn vị**; tổng SKU/type/tuyến nhất quán.
+4. Split/origin/refit, Top 10 theo quantity success trong train, feature/model/config version.
+5. Predictions và metric mọi tuyến × SKU; KPI Top 10 kèm MAPE_positive/coverage/MAE/WAPE.
+6. Calendar có nguồn/version; stock/receipts/SS/ROP/MOQ/ngưỡng riêng carrier có scenario/source/status/version và quy tắc sinh.
+7. Rerun/idempotency, bảo toàn kho và các ca biên trong [AGENTS](../AGENTS.md).
 
-Nguồn: [Review_SIGMA_M2_M3.md](../Review_SIGMA_M2_M3.md), mục [B1, B4, D2–D3]; cập nhật theo [phạm vi người dùng](PROJECT_OVERVIEW.md), 25/09/2026.
+v0.1 Region × SKU và v0.2 activation là artifact lịch sử, không gắn lại nhãn thành kết quả tuyến v0.3. Chỉ có orders được cấp; không đặt điều kiện tải thêm dữ liệu kho thật. Xem [DATA_CONTRACT](DATA_CONTRACT.md) và [EVALUATION_AND_BACKTEST](EVALUATION_AND_BACKTEST.md).

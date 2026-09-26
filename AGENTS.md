@@ -1,14 +1,16 @@
 # Hướng dẫn AI coding agent — SIGMA
 
-Áp dụng khi viết/sửa pipeline, feature, model, backtest, allocation, inventory, EOL và output. Checklist giữ các lỗi/ràng buộc **[CỨNG]** của review, cập nhật phạm vi theo đề bài và xác nhận người dùng ngày 25/09/2026; không biến **[MỀM] / [XÁC NHẬN]** thành luật nghiệp vụ đã duyệt.
+Áp dụng khi viết/sửa pipeline, feature, model, backtest, allocation, inventory, EOL và output. Checklist giữ các lỗi/ràng buộc **[CỨNG]** của review, cập nhật nghiệp vụ theo xác nhận mentor do người dùng cung cấp ngày 26/09/2026; không biến **[MỀM] / [XÁC NHẬN]** thành luật nghiệp vụ đã duyệt.
 
 ## Thứ tự nguồn và trạng thái quyết định
 
-- [ ] Đọc [PROJECT_OVERVIEW](docs/PROJECT_OVERVIEW.md), [DECISIONS.md](docs/DECISIONS.md) và [Review_SIGMA_M2_M3.md](Review_SIGMA_M2_M3.md). Chỉ dẫn mới của người dùng/yêu cầu gốc ưu tiên hơn đề xuất cũ mâu thuẫn; review vẫn là nguồn cho số liệu đã kiểm chứng và lỗi kỹ thuật. Không dùng phần D1/D2/D3 lịch sử để ghi đè quyết định cập nhật.
-- [ ] Giữ ý nghĩa nhãn **[CỨNG] / [MỀM] / [XÁC NHẬN]**. S1–S3 ghi nhận phạm vi/yêu cầu đã được người dùng cung cấp; các default D1 chưa được duyệt vẫn là **đề xuất — cần mentor xác nhận**. Không coi quyền dựng giả định là mentor đã duyệt mọi giá trị.
+- [ ] Đọc [PROJECT_OVERVIEW](docs/PROJECT_OVERVIEW.md), [DECISIONS.md](docs/DECISIONS.md) và [Review_SIGMA_M2_M3.md](Review_SIGMA_M2_M3.md). Xác nhận mới của mentor qua người dùng ưu tiên hơn ảnh đề bài và đề xuất cũ mâu thuẫn; review vẫn là nguồn cho số liệu đã kiểm chứng và lỗi kỹ thuật. Không dùng phần D1/D2/D3 lịch sử để ghi đè quyết định cập nhật.
+- [ ] Giữ ý nghĩa nhãn **[CỨNG] / [MỀM] / [XÁC NHẬN]**. S1–S6 trong DECISIONS là các xác nhận hiện hành; target/filter/đơn vị/phạm vi dự báo và nguyên tắc cấu hình riêng carrier đã chốt. Các giá trị/default còn mở vẫn là **đề xuất — cần mentor xác nhận**. Không coi quyền dựng giả định là mentor đã duyệt mọi giá trị.
 - [ ] **Phạm vi đã xác nhận:** chỉ có orders được cấp. Tự dựng dữ liệu dẫn xuất và config/scenario; không xin/chờ inventory, supplier config, receipts, EOL hoặc order mới như điều kiện triển khai dự án.
-- [ ] Tách quan sát, dẫn xuất, giả định và kết quả mô phỏng theo [DATA_CONTRACT v0.2](docs/DATA_CONTRACT.md). Dẫn xuất có công thức/cutoff; giả định có lý do/source/status/version/scenario và seed nếu có. Không suy stock/L/MOQ/chi phí thật chỉ từ orders.
-- [ ] Đáp ứng output activation theo tuyến quốc gia–nhà mạng; không tự đổi lại thành order-date × Region × SKU vì benchmark cũ sẵn có. Filter/đơn vị/grain chi tiết còn phải được khai báo; số liệu v0.1 không được gắn cho v0.2.
+- [ ] Tách quan sát, dẫn xuất, giả định và kết quả mô phỏng theo [DATA_CONTRACT v0.3](docs/DATA_CONTRACT.md). Dẫn xuất có công thức/cutoff; giả định có lý do/source/status/version/scenario và seed nếu có. Không suy stock/L/MOQ/chi phí thật chỉ từ orders.
+- [ ] **Target đã xác nhận:** SUM(quantity) WHERE order_status='success' theo order_date UTC; activation chỉ tham khảo, không là target hay điều kiện lọc success. Output cho tất cả 10 SKU × tuyến (destination_country, carrier) hợp lệ; tổng tuyến bằng cộng SKU/type. Top 10 chọn theo tổng quantity success trong train, chỉ dùng chấm KPI, không thu hẹp phạm vi forecast.
+- [ ] **Nghiệp vụ đã xác nhận:** chỉ bán cho khách ở Việt Nam đi du lịch quốc tế. Country là nước sử dụng, carrier là nhà mạng tại nước đích, region gộp các nước đích; không suy thành nơi bán hoặc vị trí kho.
+- [ ] **Đối soát dữ liệu:** 100.000 đơn, 18 nước đích, 46 carrier, 8 region, 10 SKU, 2 product_type; 01/01/2024–31/12/2025 có 731 ngày; 93.104 đơn success, 118.296 đơn vị. Không đồng nhất số đơn với quantity.
 - [ ] Giữ mục tiêu MAPE ≤20% ở Top 10 tuyến và cảnh báo trước ≥7 ngày. Báo đạt/chưa đạt theo cách đo thống nhất, không bỏ KPI hoặc tự coi metric bổ sung là thay thế đã được chấp thuận.
 - [ ] Mọi default SS/ROP, L/R/MOQ, service target, cửa sổ phân bổ, hệ số mùa vụ/chuyển đổi EOL/cold-start và scenario cần nguồn + trạng thái “cần mentor xác nhận” trong code/config khi chưa được duyệt. Không hard-code như luật doanh nghiệp hoặc tự ghi người/ngày phê duyệt.
 - [ ] **[CỨNG]** Không dùng `customer_type` làm feature/phân tích; không dùng `is_suspected_anomaly`, `anomaly_note` trong logic/feature. Raw có thể giữ bất biến cho audit; tên cột trong schema không phải sự cho phép sử dụng.
@@ -16,21 +18,21 @@
 
 ## Dữ liệu, target và thời gian
 
-- [ ] **[CỨNG] A2.1:** Lưới order-date v0.1 gồm ngày nhuận, không dùng “730 ngày” của PDF. Với activation v0.2, xác định cửa sổ quan sát riêng; không áp cứng số ngày/số dòng của v0.1.
+- [ ] **[CỨNG] A2.1:** Lưới order-date UTC gồm 731 ngày và ngày nhuận 29/02/2024, không dùng “730 ngày” của PDF. Số dòng/độ thưa phải tính đúng grain; 58.480 dòng của Region × SKU v0.1 không phải lưới tuyến × SKU v0.3.
 - [ ] **[CỨNG] A2.2:** Country 1–n Carrier; Region 1–n Country. Carrier → country → region là phụ thuộc một chiều trong dataset, không phải song ánh hoặc bất biến nghiệp vụ tương lai.
 - [ ] **[CỨNG] A2.3:** Phân biệt số dòng mọi trạng thái, số đơn success và SUM(quantity) success. Không gắn nhãn “số đơn thành công” cho số liệu SKU toàn bộ trạng thái.
 - [ ] **[CỨNG] A2.6/B7.f:** Hệ số mùa vụ chưa tái lập được theo định nghĩa công bố; không dùng như tham số chắc chắn. Cần công thức/cửa sổ/mẫu số/trọng số/xử lý xu hướng và code trước khi dùng; tỷ số kiểm tra độ nhạy không thay hệ số chính thức.
 - [ ] Giữ raw bất biến; activation NULL vẫn NULL, không impute thành ngày đặt. Kiểm tra bộ ba carrier/country/region nếu cùng lưu, vì FK riêng không ngăn dữ liệu mâu thuẫn. Khoảng quantity quan sát không phải CHECK nghiệp vụ vĩnh viễn. (A1, B4, B8)
-- [ ] **[CỨNG] B1:** Không chọn order thay activation vì thiếu activation toàn bộ orders; success có activation đầy đủ. Đề bài đã nêu dự báo kích hoạt; còn chốt cách đếm/filter và khai báo giả định liên hệ với trừ kho mô phỏng.
+- [ ] **[CỨNG] B1:** Lý do chọn order/quantity sold là xác nhận nghiệp vụ của mentor, không phải vì thiếu activation toàn bộ orders; success có activation đầy đủ. Khai báo riêng giả định liên hệ lượng bán với trừ kho mô phỏng.
 - [ ] **[CỨNG] B1:** Không đồng nhất lượng bán quan sát với nhu cầu tiềm ẩn hoặc stock consumption. CSV thiếu availability/stockout; không dựng nhãn “không có nhu cầu” như sự thật.
 - [ ] **[CỨNG] B1:** Activation lag không phải procurement lead time. Không dùng lag này để điền L khi thiếu nguồn vận hành.
-- [ ] Refunded có activation không chứng minh kho đã được hoàn. Với v0.1, success+refunded là sensitivity riêng; với activation v0.2, filter chưa chốt nên phải ghi rõ từng nhánh và không đồng nhất sự kiện kích hoạt với dòng hàng trả lại. (A1, B1 **[XÁC NHẬN]**, contract v0.2)
+- [ ] Refunded bị loại khỏi target chính đã chốt. Success+refunded chỉ là sensitivity tùy chọn có nhãn riêng; activation không chứng minh kho đã được hoàn. Không đồng nhất lượng bán/kích hoạt với dòng hàng trả lại. (A1, B1, contract v0.3)
 - [ ] **[CỨNG] B1/A3.6:** Khóa UTC cho order_date và activation_date, không đổi giữa module/ghép lịch. Đổi timezone/filter/grain phải version hóa và tái lập, không đổi âm thầm.
 - [ ] **[CỨNG] B1:** Lưu data_cutoff, timezone và target version; công bố giới hạn point-in-time. Trạng thái cuối không chứng minh pending/refunded đã biết lúc đặt; backtest đang giả định nhãn đủ chín.
-- [ ] Với target activation, giữ sự kiện ngoài khoảng order; kiểm tra lệch mẫu đầu/cuối và cửa sổ đủ quan sát trước split. Ngày activation cuối trong file không chứng minh mọi sự kiện đến đó đều được ghi nhận. (A3.5, contract v0.2)
-- [ ] **[CỨNG] B2, cập nhật phạm vi:** Phân biệt grain model, output tuyến theo đề bài và stock item. Region × SKU là phương án gộp v0.1, không còn luật buộc làm cấp dự báo chính. Nếu dùng cấp gộp/cấp con, phải đưa về đúng tuyến/target để chấm KPI.
+- [ ] Nếu phân tích activation tham khảo, giữ sự kiện ngoài khoảng order và kiểm tra lệch mẫu đầu/cuối. Ngày activation cuối không chứng minh dữ liệu đầy đủ tới đó; không dùng cửa sổ này thay cửa sổ target bán hàng. (A3.5, contract v0.3)
+- [ ] **[CỨNG] B2, cập nhật phạm vi:** Phân biệt grain model, output tuyến theo đề bài và stock item. Region × SKU là phương án gộp v0.1. Nếu dùng cấp gộp/cấp con, vẫn phải xuất đủ tuyến × SKU và cộng về tổng tuyến để chấm KPI quantity sold.
 - [ ] **[CỨNG] B2:** Chỉ điền zero khi giả định dữ liệu đã nạp đủ và mặt hàng đang được bán. Khi có thông tin, phân biệt zero thật/chưa mở bán/tạm dừng/thiếu dữ liệu/hết hàng; không nội suy zero thật thành nhu cầu dương.
-- [ ] Không dùng ngày làm dự án làm ngày dữ liệu. Phạm vi là replay lịch sử/mô phỏng; không chờ order mới hoặc gọi dữ liệu cũ là forecast vận hành hiện tại. Nhãn “chưa có actual” của activation phải xét cửa sổ quan sát riêng. (D2 cập nhật)
+- [ ] Không dùng ngày làm dự án làm ngày dữ liệu. Phạm vi là replay lịch sử/mô phỏng; không chờ order mới hoặc gọi dữ liệu cũ là forecast vận hành hiện tại. Sau 31/12/2025 chưa có actual bán hàng trong file; activation muộn hơn không bổ sung actual cho target này. (D2 cập nhật)
 
 ## Feature, horizon và chống leakage
 
@@ -39,7 +41,7 @@
 - [ ] **[CỨNG] B2:** Chấm horizon thật nhiều bước; không dự báo bước sau với lag_1 chứa actual tương lai. Direct dùng thống kê tại origin + horizon_day/lịch ngày dự báo. Nếu đổi sang recursive, thay actual chưa biết bằng forecast trong training/evaluation tương ứng; direct vẫn là **[MỀM]**, không phải lựa chọn duy nhất.
 - [ ] **[CỨNG] B1–B2:** Không dùng activation/trạng thái tương lai, giá bình quân của đơn trong ngày cần dự báo, revenue hoặc quantity cùng ngày làm feature. Giá/khuyến mãi tương lai chỉ dùng nếu đã biết tại origin.
 - [ ] Không đưa một carrier categorical vào dòng Region × SKU có nhiều carrier. Tỷ trọng lịch sử nếu dùng phải tính tới origin; M2 chưa cần bước này. Không dùng CUSTOMER tổng hợp toàn kỳ làm feature. (B2, B4)
-- [ ] Calendar phải phủ ngày forecast và có nguồn/phiên bản; không gọi calendar tự dựng là đã duyệt. Feature lễ/mùa hè là **[MỀM]**, thử riêng sau khi chốt ý nghĩa; không tự chọn lịch nước chi phối chỉ từ điểm đến. (A2.4, B2, B4)
+- [ ] Calendar phải phủ ngày forecast và có nguồn/phiên bản; không gọi calendar tự dựng là đã duyệt. Khách mua ở Việt Nam; feature lễ Việt Nam/mùa du lịch là **[MỀM]**, cần nguồn và ablation; không tự chọn lịch nước chi phối chỉ từ điểm đến. (A2.4, B2, B4)
 - [ ] **[CỨNG] B3:** Không chọn Top 10, feature, cửa sổ phân bổ hoặc ngưỡng EOL bằng test/future; thống kê toàn kỳ trong review chỉ là EDA.
 - [ ] Chỉ đưa direct training row vào khi toàn bộ nhãn của row đã nằm trước cutoff; chỉ chấm horizon đầy đủ trong partition. Cố định lịch refit trước test; actual test đã trôi qua có thể dùng ở origin mới, actual sau origin không được dùng. Không tuning lại bằng final test. (D2)
 
@@ -48,16 +50,16 @@
 - [ ] **[CỨNG] B3:** MAPE không tính khi actual=0; không chèn epsilon tùy ý. Dùng tên MAPE_positive, luôn báo số điểm/tổng điểm và coverage, cùng MAE/WAPE; không bỏ zero rồi gọi là MAPE toàn bộ.
 - [ ] WAPE/bias có mẫu số bằng 0 thì N/A, báo MAE/forecast excess riêng. MASE/RMSSE chuẩn hóa bằng train; mẫu số train bằng 0 thì N/A. (B3)
 - [ ] Không trình metric tuần/tổng horizon như metric ngày; không chọn model chỉ vì MAE của nhóm rất thưa. Xét bias, sai số cộng dồn và hệ quả stockout; chấm các region/nhóm thưa, không chỉ Top 10. (A3–A4, B2–B3)
-- [ ] Benchmark A4 là order-date × Region × SKU v0.1, không chứng minh đạt/không thể đạt KPI activation/tuyến. Chạy lại benchmark đúng target; chấm và chọn model/fallback theo tuyến. Không sửa metric để “đạt”; hoàn thành kỹ thuật không tự đồng nghĩa nghiệm thu KPI. (A4, D1.8, D2 cập nhật)
+- [ ] Benchmark A4 là order-date × Region × SKU v0.1, không chứng minh đạt/không thể đạt KPI quantity sold theo tuyến v0.3. Chạy lại benchmark đúng grain; chấm và chọn model/fallback theo tuyến. Không sửa metric để “đạt”; hoàn thành kỹ thuật không tự đồng nghĩa nghiệm thu KPI. (A4, D1.8, D2 cập nhật)
 
 ## Khóa bảng, metadata và phân bổ
 
 - [ ] **[CỨNG] B4:** REGION_INVENTORY có snapshot + region + carrier + SKU + product_type, hoặc stock_item_id biểu diễn đủ. Lưu snapshot timestamp/source/scenario; định nghĩa stock khả dụng, đã giữ chỗ và hàng không thể bán. Không dùng chung một tồn kho cho nhiều nhà cung cấp/type khi tính theo Mục 8.5.
-- [ ] **[CỨNG] B4:** Thống nhất PK FORECAST_RESULT, run_date không đủ phân biệt rerun. Theo schema v0.2 đề xuất, dùng run_id + series_key + forecast_date; mỗi run gắn một target/grain version, series_key giải ra route/cấp con. Truy vết model_version/cutoff/filter; không trộn activation với order-date.
+- [ ] **[CỨNG] B4:** Thống nhất PK FORECAST_RESULT, run_date không đủ phân biệt rerun. Theo schema v0.3 đề xuất, dùng run_id + series_key + forecast_date; mỗi run gắn một target/grain version, series_key giải ra route/cấp con. Truy vết model_version/cutoff/filter; không trộn activation với order-date.
 - [ ] **[CỨNG] B4:** REORDER_RECOMMENDATION đủ carrier/product_type; liên kết run forecast, snapshot, config/allocation/rule version và scenario. Không FK một khuyến nghị cộng nhiều ngày vào một dòng forecast ngày đơn lẻ.
-- [ ] SUPPLIER_CONFIG phải hỗ trợ hiệu lực/version, product_type, default và override rõ. `sku='*'` không phải SKU thật để ép qua FK. Kiểm tra uniqueness/hiệu lực theo thiết kế đã chọn. (B4)
+- [ ] **Đã xác nhận:** SS/ROP/MOQ/ngưỡng cảnh báo và rule nhập cấu hình riêng từng carrier/đối tác; không dùng một bộ tham số chung. SUPPLIER_CONFIG có scope carrier/type/SKU, hiệu lực/version, default/override rõ; thiếu config không mượn carrier khác. Giá trị cụ thể, cơ sở so ngưỡng và toán tử < hoặc ≤ cần source/status. `sku='*'` không phải SKU thật để ép qua FK; kiểm tra uniqueness/hiệu lực. (B4)
 - [ ] **[CỨNG] B4:** Lifecycle theo đúng offering/stock item; không EOL SKU chung toàn hệ thống vì một carrier dừng. Thống nhất vai trò replace_sku/successor_sku; cascade đúng phạm vi thực sự.
-- [ ] **[CỨNG] B5.1:** Share chỉ dùng lịch sử tới origin; tử/mẫu cùng parent/target/cửa sổ. Parent route cho activation mới; region/SKU chỉ cho nhánh v0.1. Không chuyển share giữa target mà thiếu nhãn giả định/kiểm thử.
+- [ ] **[CỨNG] B5.1:** Share chỉ dùng lịch sử tới origin; tử/mẫu cùng parent/target/cửa sổ. Parent route hoặc route × SKU theo cấp phân bổ quantity sold; region/SKU chỉ cho nhánh gộp có backtest. Không chuyển share giữa target mà thiếu nhãn giả định/kiểm thử.
 - [ ] **[CỨNG] B5.2:** Lọc offering hợp lệ; phân biệt chưa có lịch sử và không còn cung cấp. Mẫu số các cửa sổ fallback bằng 0 thì allocation_unavailable hoặc mapping demo đã cấu hình, không chia cho 0.
 - [ ] **[CỨNG] B5.3:** Chỉ ép tổng share=1 khi toàn bộ nhu cầu cha còn phục vụ được. Khi EOL mất khách, tách phần giữ được và phần không phục vụ; không ép toàn bộ sang carrier còn lại.
 - [ ] **[CỨNG] B5.4:** Không tự thay country cùng region hoặc đổi eSIM sang physical_SIM; kiểm tra điểm đến, thiết bị, gói/quyền sử dụng và nguồn cung.
@@ -103,13 +105,22 @@ EOL không được nêu riêng trong ảnh; vẫn giữ các kịch bản từ 
 Các ràng buộc từ D3 áp dụng khi triển khai rule, không coi dữ liệu scenario là dữ liệu thật:
 
 - [ ] Policy chỉ thấy thông tin có tại origin; order về theo ETA; bảo toàn tồn kho, nhất quán lost-sales hoặc backorder. So policy trên cùng scenario/demand/randomness; lưu seed nếu sinh ngẫu nhiên.
-- [ ] Fill rate tính theo đơn vị đáp ứng/đơn vị yêu cầu. Khai báo giả định activation tiêu thụ stock hoặc nhánh order-date riêng; không trộn chúng hoặc coi mô phỏng là hiệu quả nhu cầu tiềm ẩn thật.
+- [ ] Fill rate tính theo đơn vị đáp ứng/đơn vị yêu cầu. Khai báo giả định một đơn vị quantity bán theo order_date tiêu thụ một đơn vị stock; không tự coi đó là luồng kho thật hoặc mô phỏng là hiệu quả nhu cầu tiềm ẩn thật.
 - [ ] Đánh giá cảnh báo tách nhánh đối chứng không đặt thêm ngoài receipt đã có tại origin và nhánh có hành động. Nhập kịp khiến không cạn không tự là false positive.
 - [ ] Đếm cảnh báo theo sự kiện, tránh đếm lặp stockout mỗi ngày. Sai số ngày cạn chỉ khi cả hai bên có sự kiện trong cửa sổ; báo trường hợp không cạn/chưa quan sát đủ, không gán ngày cạn giả.
-- [ ] Kiểm thử thiếu stock/config; velocity=0 nhưng forecast>0; q_raw=0 có MOQ; stock đúng ngưỡng.
+- [ ] Kiểm thử thiếu stock/config; velocity=0 nhưng forecast>0; q_raw=0 có MOQ; stock đúng ngưỡng; hai carrier có ngưỡng/MOQ khác nhau cho kết quả theo đúng config.
 - [ ] Kiểm thử hàng về sau ngày cạn; stock đã giữ chỗ; forecast thiếu một ngày; share denominator=0.
 - [ ] Kiểm thử EOL một carrier trong khi carrier khác còn bán; successor tự trỏ/vòng; suspended quay lại active; receipt/khuyến nghị chạy lại.
 
-Nguồn: [Review_SIGMA_M2_M3.md](Review_SIGMA_M2_M3.md), mục [phạm vi, A1–A4, B1–B8, D1–D3, E]; cập nhật theo [đề bài và phạm vi người dùng](docs/PROJECT_OVERVIEW.md), 25/09/2026.
+Nguồn: [Review_SIGMA_M2_M3.md](Review_SIGMA_M2_M3.md), mục [phạm vi, A1–A4, B1–B8, D1–D3, E]; cập nhật theo [xác nhận mentor do người dùng cung cấp](docs/PROJECT_OVERVIEW.md), 26/09/2026.
 
 Khi sửa code, luôn đối chiếu lại DECISIONS.md và Review_SIGMA_M2_M3.md trước khi hard-code một giả định mới.
+
+## Quy tắc cập nhật GitHub
+
+- Khi người dùng yêu cầu đẩy cập nhật lên GitHub, thực hiện đủ kiểm tra → commit → push → xác minh; không dừng ở commit local hoặc hỏi lại quyền push đã được cấp.
+- Trước khi commit, kiểm tra status, diff, nhánh và remote; chỉ stage các file thuộc phạm vi công việc, giữ nguyên thay đổi không liên quan. Không đưa secret/token, file môi trường hoặc artifact tạm vào commit.
+- Chạy `git diff --check` và kiểm tra phù hợp với thay đổi. Với tài liệu, rà tính nhất quán target/KPI và liên kết; với code, chạy kiểm thử liên quan. Không ghi đã chạy model/test khi chưa chạy.
+- Viết commit message nêu rõ thay đổi; cập nhật CHANGELOG khi thay đổi target, phạm vi hoặc quy tắc dự án. Fetch trước khi push để kiểm tra chênh lệch với remote; không force-push, reset hay ghi đè công việc của người khác.
+- Push lên nhánh/remote đã xác định; nếu remote có cập nhật thì tích hợp và kiểm tra lại trước khi push. Nếu cần nhánh mới, dùng tiền tố `codex/`, trừ khi người dùng chỉ định khác.
+- Sau push, xác minh commit trên remote khớp commit local; báo nhánh, commit và liên kết GitHub. Nếu bị chặn bởi quyền truy cập hoặc bảo vệ nhánh, báo đúng trạng thái và nguyên nhân, không tuyên bố đã đẩy thành công.
